@@ -68,6 +68,7 @@ from ultralytics.nn.modules import (
     YOLOEDetect,
     YOLOESegment,
     v10Detect,
+    BiFPN_Concat
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, LOGGER, YAML, colorstr, emojis
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
@@ -1623,6 +1624,11 @@ def parse_model(d, ch, verbose=True):
             args = [ch[f]]
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
+        elif m is BiFPN_Concat:
+            # 关键：手动提取输入层的通道
+            c1 = [ch[x] for x in f] if isinstance(f, list) else [ch[f]]
+            c2 = args[0] if args else max(c1) # 如果yaml里没写参数，默认取c1最大值
+            args = [c1, c2] # 重新封装，这样 m(*args) 就等同于 BiFPN_Concat(c1, c2)
         elif m in frozenset(
             {Detect, WorldDetect, YOLOEDetect, Segment, YOLOESegment, Pose, OBB, ImagePoolingAttn, v10Detect}
         ):

@@ -101,6 +101,7 @@ from .transformer import (
     TransformerEncoderLayer,
     TransformerLayer,
 )
+from .bifpn import BiFPN_Concat
 
 __all__ = (
     "AIFI",
