@@ -3,7 +3,7 @@ import torch.nn as nn
 from ultralytics import YOLO
 
 # 1. 加载模型
-model_path = "yolo11-bifpn.yaml"
+model_path = "yolo11n-bifpn.yaml"
 model = YOLO(model_path)
 
 # 2. 获取底层的 PyTorch 模型并设为训练模式

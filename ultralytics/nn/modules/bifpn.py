@@ -4,10 +4,13 @@ import torch.nn as nn
 from .conv import Conv
 
 class BiFPN_Concat(nn.Module):
-    def __init__(self, c1, c2=None, **kwargs):
-        """
-        c1: 输入通道列表，例如 [128, 256]
-        c2: 输出通道数。如果不指定，默认取 c1 中的最大值
+    """Learnable weighted feature fusion and bidirectional cross-scale connectivity Concat"""
+    def __init__(self, c1, c2=None):
+        """Initialize C3k2 module.
+
+        Args:
+            c1 (int): Input channels.
+            c2 (int): Output channels.
         """
         super(BiFPN_Concat, self).__init__()
         
@@ -28,6 +31,14 @@ class BiFPN_Concat(nn.Module):
         self.epsilon = 1e-4
 
     def forward(self, x: list[torch.Tensor])-> torch.Tensor:
+        """Perform a forward pass of the BiFPN block.
+
+        Args:
+            x (torch.Tensor): Input tensor list.
+
+        Returns:
+            (torch.Tensor): Output tensor.
+        """
         # 1. 通道对齐
         processed_x = []
         for i, tensor in enumerate(x):
