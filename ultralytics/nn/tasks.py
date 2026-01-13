@@ -68,7 +68,9 @@ from ultralytics.nn.modules import (
     YOLOEDetect,
     YOLOESegment,
     v10Detect,
-    BiFPN_Concat
+    BiFPN_Concat,
+    CoordAtt,
+    CoordCrossAtt,
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, LOGGER, YAML, colorstr, emojis
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
@@ -1629,6 +1631,21 @@ def parse_model(d, ch, verbose=True):
             c1 = [ch[x] for x in f] if isinstance(f, list) else [ch[f]]
             c2 = args[0] if args else max(c1) # 如果yaml里没写参数，默认取c1最大值
             args = [c1, c2] # 重新封装，这样 m(*args) 就等同于 BiFPN_Concat(c1, c2)
+        elif m is CoordAtt:
+            # CoordAtt: inp, oup, reduction=32
+            inp = ch[f]
+            oup = args[0] if args else inp  # 如果yaml里没写参数，输出通道默认等于输入通道
+            reduction = args[1] if len(args) > 1 else 32
+            c2 = oup
+            args = [inp, oup, reduction]
+        elif m is CoordCrossAtt:
+            # CoordCrossAtt: inp, oup, reduction=32, num_heads=1
+            inp = ch[f]
+            oup = args[0] if args else inp  # 如果yaml里没写参数，输出通道默认等于输入通道
+            reduction = args[1] if len(args) > 1 else 32
+            num_heads = args[2] if len(args) > 2 else 1
+            c2 = oup
+            args = [inp, oup, reduction, num_heads]
         elif m in frozenset(
             {Detect, WorldDetect, YOLOEDetect, Segment, YOLOESegment, Pose, OBB, ImagePoolingAttn, v10Detect}
         ):

@@ -101,7 +101,11 @@ from .transformer import (
     TransformerEncoderLayer,
     TransformerLayer,
 )
-from .bifpn import BiFPN_Concat
+from .fce_block import (
+    BiFPN_Concat,
+    CoordAtt,
+    CoordCrossAtt
+)
 
 __all__ = (
     "AIFI",
@@ -180,4 +184,7 @@ __all__ = (
     "YOLOEDetect",
     "YOLOESegment",
     "v10Detect",
+    "BiFPN_Concat",
+    "CoordAtt",
+    "CoordCrossAtt"
 )
