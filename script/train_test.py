@@ -6,8 +6,8 @@ model = YOLO(model_path)
 
 model.train(
     data="/home/shiomisaka/workplace/ai-playground/datasets/MY_TEST_DATA/data.yaml",
-    epochs=2,
+    epochs=30,
     imgsz=640,
-    batch=2,
+    batch=4,
     device="cpu"
 )
