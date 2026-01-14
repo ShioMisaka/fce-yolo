@@ -6,7 +6,8 @@ from .conv import Conv
 __all__ = (
     "BiFPN_Concat",
     "CoordAtt",
-    "CoordCrossAtt"
+    "CoordCrossAtt",
+    "BiCoordCrossAtt"
 )
 
 class BiFPN_Concat(nn.Module):
@@ -177,3 +178,97 @@ class CoordCrossAtt(nn.Module):
         y_att = self.gate(self.proj(z))  # [N, oup, H, 1]
 
         return x * y_att
+
+
+class BiCoordCrossAtt(nn.Module):
+    """
+    Bidirectional Coordinate Cross Attention
+
+    特点：
+    1. 对称结构：同时计算 H->W 和 W->H 的注意力，保证两个方向都被增强。
+    2. 效率优化：直接对池化后的特征进行投影，减少不必要的中间卷积。
+
+    Args:
+        inp: 输入通道数
+        oup: 输出通道数
+        reduction: 缩减比例
+        num_heads: 多头注意力的头数
+    """
+
+    def __init__(self, inp: int, oup: int, reduction: int = 32, num_heads: int = 4):
+        super().__init__()
+        self.num_heads = num_heads
+        # 为了减少计算量，Attention 内部通道数可以更小
+        self.dim_head = max(8, inp // reduction) // num_heads
+        self.mid_dim = self.dim_head * num_heads
+        self.scale = self.dim_head ** -0.5
+
+        # 空间池化
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+
+        # --- Branch H (Height) ---
+        # Q_h 来自 H特征, K_h, V_h 来自 W特征 (捕捉宽度上的上下文来增强高度)
+        self.proj_q_h = nn.Conv2d(inp, self.mid_dim, 1)
+        self.proj_k_h = nn.Conv2d(inp, self.mid_dim, 1)
+        self.proj_v_h = nn.Conv2d(inp, self.mid_dim, 1)
+        self.out_h = nn.Conv2d(self.mid_dim, oup, 1)
+
+        # --- Branch W (Width) ---
+        # Q_w 来自 W特征, K_w, V_w 来自 H特征 (捕捉高度上的上下文来增强宽度)
+        self.proj_q_w = nn.Conv2d(inp, self.mid_dim, 1)
+        self.proj_k_w = nn.Conv2d(inp, self.mid_dim, 1)
+        self.proj_v_w = nn.Conv2d(inp, self.mid_dim, 1)
+        self.out_w = nn.Conv2d(self.mid_dim, oup, 1)
+
+        self.activation = nn.Sigmoid()  # 最终生成权重范围 [0, 1]
+
+        # 如果输入输出通道不一致，需要一个 shortcut 变换
+        self.identity = nn.Conv2d(inp, oup, 1) if inp != oup else nn.Identity()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        n, c, h, w = x.size()
+
+        # 1. 池化获得方向向量
+        x_h = self.pool_h(x)  # [N, C, H, 1]
+        x_w = self.pool_w(x)  # [N, C, 1, W]
+
+        # -----------------------
+        # Branch 1: 增强 Height 方向 (利用 Width 信息)
+        # -----------------------
+        # Query: [N, heads, H, C_head]
+        q_h = self.proj_q_h(x_h).view(n, self.num_heads, self.dim_head, h).permute(0, 1, 3, 2)
+        # Key/Value 来自 x_w: [N, heads, C_head, W]
+        k_h = self.proj_k_h(x_w).view(n, self.num_heads, self.dim_head, w)
+        v_h = self.proj_v_h(x_w).view(n, self.num_heads, self.dim_head, w).permute(0, 1, 3, 2)  # [N, heads, W, C_head]
+
+        # Attn Map: [N, heads, H, W] -> 表示每个H位置与每个W位置的关联
+        attn_h = (q_h @ k_h) * self.scale
+        attn_h = attn_h.softmax(dim=-1)
+
+        # Aggregation: [N, heads, H, W] @ [N, heads, W, C_head] -> [N, heads, H, C_head]
+        y_h = (attn_h @ v_h).permute(0, 1, 3, 2).reshape(n, self.mid_dim, h, 1)
+        weight_h = self.activation(self.out_h(y_h))  # [N, oup, H, 1]
+
+        # -----------------------
+        # Branch 2: 增强 Width 方向 (利用 Height 信息)
+        # -----------------------
+        # Query: [N, heads, W, C_head]
+        q_w = self.proj_q_w(x_w).view(n, self.num_heads, self.dim_head, w).permute(0, 1, 3, 2)
+        # Key 来自 x_h: [N, heads, C_head, H]
+        k_w = self.proj_k_w(x_h).view(n, self.num_heads, self.dim_head, h)
+        # Value 来自 x_h
+        v_w = self.proj_v_w(x_h).view(n, self.num_heads, self.dim_head, h).permute(0, 1, 3, 2)  # [N, heads, H, C_head]
+
+        # Attn Map: [N, heads, W, H]
+        attn_w = (q_w @ k_w) * self.scale
+        attn_w = attn_w.softmax(dim=-1)
+
+        # Aggregation: [N, heads, W, H] @ [N, heads, H, C_head] -> [N, heads, W, C_head]
+        y_w = (attn_w @ v_w).permute(0, 1, 3, 2).reshape(n, self.mid_dim, 1, w)
+        weight_w = self.activation(self.out_w(y_w))  # [N, oup, 1, W]
+
+        # -----------------------
+        # Final Fusion
+        # -----------------------
+        return self.identity(x) * weight_h * weight_w

@@ -104,7 +104,8 @@ from .transformer import (
 from .fce_block import (
     BiFPN_Concat,
     CoordAtt,
-    CoordCrossAtt
+    CoordCrossAtt,
+    BiCoordCrossAtt
 )
 
 __all__ = (
@@ -186,5 +187,6 @@ __all__ = (
     "v10Detect",
     "BiFPN_Concat",
     "CoordAtt",
-    "CoordCrossAtt"
+    "CoordCrossAtt",
+    "BiCoordCrossAtt"
 )
