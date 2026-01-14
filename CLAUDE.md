@@ -153,51 +153,54 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 - **Template Method**: Base classes with customizable hooks
 - **Composition**: Modular architecture with reusable components
 
-## Adding New Models or Modules
+## Custom FCE Modules
 
-### Adding a New Neural Network Module
-1. Create module in `ultralytics/nn/modules/`
-2. Import in `ultralytics/nn/modules/__init__.py`
-3. Import in `ultralytics/nn/tasks.py` (for YAML parsing)
-4. Add parameter parsing logic in `parse_model()` method of `ultralytics/nn/tasks.py`
-5. Use in model YAML config
+本项目在 `ultralytics/nn/modules/fce_block.py` 中实现了自定义特征增强模块：
 
-### Custom FCE Modules (`ultralytics/nn/modules/fce_block.py`)
+| 模块 | 描述 | 参考 |
+|------|------|------|
+| **BiFPN_Concat** | 可学习的加权特征融合，支持多尺度输入 | [EfficientDet](https://arxiv.org/abs/1911.09070) |
+| **CoordAtt** | 坐标注意力，分别捕获水平和垂直空间依赖 | [CoordAtt](https://arxiv.org/abs/2103.02907) |
+| **CoordCrossAtt** | 坐标交叉注意力，跨方向特征交互 | 基于 CoordAtt 改进 |
+| **BiCoordCrossAtt** | 双向坐标交叉注意力，对称 H<->W 交互 | 基于 CoordAtt 改进 |
 
-This file contains custom attention and feature fusion modules:
+### YAML 使用示例
 
-**BiFPN_Concat**: Learnable weighted feature fusion with bidirectional cross-scale connectivity.
-- YAML usage: `[-1, 1, BiFPN_Concat, []]` or `[-1, 1, BiFPN_Concat, [output_channels]]`
-- Auto-detects input channels from previous layers
-- Example model: `ultralytics/cfg/models/11/yolo11-bifpn.yaml`
+```yaml
+# BiFPN_Concat: 多层融合
+- [[-1, 6], 1, BiFPN_Concat, []]
 
-**CoordAtt**: Coordinate Attention module for capturing spatial dependencies.
-- YAML usage: `[-1, 1, CoordAtt, []]` or `[-1, 1, CoordAtt, [output_channels, reduction]]`
-- Parameters: `inp` (auto), `oup` (default=inp), `reduction` (default=32)
-- Reference: https://arxiv.org/abs/2103.02907
+# CoordAtt: 坐标注意力
+- [-1, 1, CoordAtt, [256, 16]]  # oup=256, reduction=16
 
-**CoordCrossAtt**: Coordinate Cross Attention with cross-direction interaction.
-- YAML usage: `[-1, 1, CoordCrossAtt, []]` or `[-1, 1, CoordCrossAtt, [output_channels, reduction, num_heads]]`
-- Parameters: `inp` (auto), `oup` (default=inp), `reduction` (default=32), `num_heads` (default=1)
-- Enhanced version of CoordAtt with multi-head cross-attention
+# CoordCrossAtt: 坐标交叉注意力
+- [-1, 1, CoordCrossAtt, [256, 16, 2]]  # oup=256, reduction=16, num_heads=2
 
-### Parameter Parsing Reference
-When adding modules with special parameter requirements, add parsing logic in `ultralytics/nn/tasks.py` around line 1634:
-```python
-elif m is YourModule:
-    input_channels = ch[f]  # Auto-detect from previous layer
-    output_channels = args[0] if args else input_channels
-    c2 = output_channels
-    args = [input_channels, output_channels, ...other_params]
+# BiCoordCrossAtt: 双向坐标交叉注意力
+- [-1, 1, BiCoordCrossAtt, [512, 16, 8]]  # oup=512, reduction=16, num_heads=8
 ```
 
-### Adding a New Task
+### 添加新模块
+
+> 详细流程请参考：`.claude/rules/add-modules.md`
+
+简要步骤：
+1. 在 `ultralytics/nn/modules/fce_block.py` 中实现模块
+2. 更新 `__all__` 导出列表
+3. 在 `ultralytics/nn/tasks.py` 中导入模块
+4. 在 `parse_model()` 方法中添加参数解析逻辑
+5. 在模型 YAML 中使用
+6. 更新文档
+
+## Adding a New Task
+
 1. Create `ultralytics/models/yolo/mytask/` directory
 2. Implement: `train.py`, `val.py`, `predict.py`, `__init__.py`
 3. Add task to `TASKS` in `ultralytics/cfg/__init__.py`
 4. Update `task_map` in `ultralytics/models/yolo/model.py`
 
-### Adding a New Model Variant
+## Adding a New Model Variant
+
 1. Create model YAML in `ultralytics/cfg/models/`
 2. Implement custom trainer/validator/predictor if needed
 3. Create model class in `ultralytics/models/`
@@ -208,6 +211,7 @@ elif m is YourModule:
 - Model base class: `ultralytics/engine/model.py`
 - YOLO model class: `ultralytics/models/yolo/model.py`
 - Neural network implementations: `ultralytics/nn/tasks.py`
+- Custom FCE modules: `ultralytics/nn/modules/fce_block.py`
 - Configuration: `ultralytics/cfg/default.yaml`
 - Model architectures: `ultralytics/cfg/models/`
 - Test configuration: `pytest.ini`, `tests/conftest.py`
