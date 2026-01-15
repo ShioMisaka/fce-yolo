@@ -1,13 +1,4 @@
-from ultralytics import YOLO
+from ultralytics.nn.tasks import DetectionModel
 
-# 1. 加载模型
-model_path = "yolo11n-fce.yaml"
-model = YOLO(model_path)
-
-from ultralytics import YOLO
-
-# 1. 加载模型
-model_path = "yolo11n-fce.yaml"
-model = YOLO(model_path)
-
-model.info(detailed=True, verbose=True)
+# 直接创建模型，verbose=True 会打印每一层的信息
+model = DetectionModel('yolo11n-fce.yaml', ch=3, nc=None, verbose=True)
