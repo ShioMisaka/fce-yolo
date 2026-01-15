@@ -8,12 +8,12 @@
 
 ### 新增模块
 
-| 模块 | 描述 | 论文/参考 |
-|------|------|-----------|
-| **BiFPN_Concat** | 可学习的加权特征融合，支持双向跨尺度连接 | [EfficientDet](https://arxiv.org/abs/1911.09070) |
-| **CoordAtt** | 坐标注意力机制，分别捕获水平和垂直方向的空间依赖关系 | [CoordAtt](https://arxiv.org/abs/2103.02907) |
-| **CoordCrossAtt** | 增强版坐标注意力，引入交叉注意力机制进行跨方向交互 | 基于 CoordAtt 改进 |
-| **BiCoordCrossAtt** | 双向坐标交叉注意力，对称的 H<->W 双向注意力机制 | 基于 CoordAtt 改进 |
+| 模块                | 描述                                                 | 论文/参考                                        |
+| ------------------- | ---------------------------------------------------- | ------------------------------------------------ |
+| **BiFPN_Concat**    | 可学习的加权特征融合，支持双向跨尺度连接             | [EfficientDet](https://arxiv.org/abs/1911.09070) |
+| **CoordAtt**        | 坐标注意力机制，分别捕获水平和垂直方向的空间依赖关系 | [CoordAtt](https://arxiv.org/abs/2103.02907)     |
+| **CoordCrossAtt**   | 增强版坐标注意力，引入交叉注意力机制进行跨方向交互   | 基于 CoordAtt 改进                               |
+| **BiCoordCrossAtt** | 双向坐标交叉注意力，对称的 H<->W 双向注意力机制      | 基于 CoordAtt 改进                               |
 
 ### 模型架构
 
@@ -96,19 +96,23 @@ yolo detect predict model=path/to/best.pt source=path/to/images
 #### 模块参数说明
 
 **CoordAtt** - 坐标注意力
+
 - 参数：`[output_channels, reduction]`
 - 默认值：`output_channels = input_channels`, `reduction = 32`
 
 **BiFPN_Concat** - 可学习加权特征融合
+
 - 参数：`[output_channels]`
 - 默认值：`output_channels = max(input_channels)`
 - 支持多输入：`[[layer1, layer2, ...], 1, BiFPN_Concat, []]`
 
 **CoordCrossAtt** - 坐标交叉注意力
+
 - 参数：`[output_channels, reduction, num_heads]`
 - 默认值：`output_channels = input_channels`, `reduction = 32`, `num_heads = 1`
 
 **BiCoordCrossAtt** - 双向坐标交叉注意力
+
 - 参数：`[output_channels, reduction, num_heads]`
 - 默认值：`output_channels = input_channels`, `reduction = 32`, `num_heads = 4`
 - 特点：对称的双向注意力（H<->W），比 CoordCrossAtt 更强的特征交互
@@ -149,12 +153,14 @@ ultralytics/
 ### yolo11-fce.yaml
 
 在 Backbone 和 Neck 中集成了 CoordAtt 和 BiFPN_Concat 模块：
+
 - Backbone: 第 5、8 层添加 CoordAtt
 - Neck: 使用 BiFPN_Concat 进行多尺度特征融合
 
 ### yolo11-bifpn.yaml
 
 在 Neck 中使用 BiFPN_Concat 替代标准 Concat：
+
 - 更高效的特征融合
 - 可学习的权重参数
 

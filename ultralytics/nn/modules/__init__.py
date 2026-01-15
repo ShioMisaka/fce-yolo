@@ -76,6 +76,7 @@ from .conv import (
     RepConv,
     SpatialAttention,
 )
+from .fce_block import BiCoordCrossAtt, BiFPN_Concat, CoordAtt, CoordCrossAtt
 from .head import (
     OBB,
     Classify,
@@ -101,12 +102,6 @@ from .transformer import (
     TransformerEncoderLayer,
     TransformerLayer,
 )
-from .fce_block import (
-    BiFPN_Concat,
-    CoordAtt,
-    CoordCrossAtt,
-    BiCoordCrossAtt
-)
 
 __all__ = (
     "AIFI",
@@ -130,6 +125,8 @@ __all__ = (
     "ADown",
     "Attention",
     "BNContrastiveHead",
+    "BiCoordCrossAtt",
+    "BiFPN_Concat",
     "Bottleneck",
     "BottleneckCSP",
     "C2f",
@@ -148,6 +145,8 @@ __all__ = (
     "Conv",
     "Conv2",
     "ConvTranspose",
+    "CoordAtt",
+    "CoordCrossAtt",
     "DWConv",
     "DWConvTranspose2d",
     "DeformableTransformerDecoder",
@@ -185,8 +184,4 @@ __all__ = (
     "YOLOEDetect",
     "YOLOESegment",
     "v10Detect",
-    "BiFPN_Concat",
-    "CoordAtt",
-    "CoordCrossAtt",
-    "BiCoordCrossAtt"
 )
