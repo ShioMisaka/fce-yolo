@@ -57,16 +57,19 @@ Ultralytics 采用模块化的损失函数设计，主要代码位于 `ultralyti
 **作用**: 处理类别不平衡问题，重点关注难分类样本。
 
 **公式**:
+
 ```
 weight = α × p^γ × (1 - label) + gt_score × label
 loss = BCE(pred_score, gt_score) × weight
 ```
 
 **参数**:
+
 - `gamma=2.0`: 聚焦参数，控制对难样本的关注程度
 - `alpha=0.75`: 平衡因子，用于解决类别不平衡
 
 **代码实现**:
+
 ```python
 def forward(self, pred_score, gt_score, label):
     weight = self.alpha * pred_score.sigmoid().pow(self.gamma) * (1 - label) + gt_score * label
@@ -81,6 +84,7 @@ def forward(self, pred_score, gt_score, label):
 **作用**: 通过降低简单样本的权重，使模型专注于困难样本。
 
 **公式**:
+
 ```
 p_t = label × pred_prob + (1 - label) × (1 - pred_prob)
 modulating_factor = (1 - p_t)^γ
@@ -88,10 +92,12 @@ loss = BCE(pred, label) × modulating_factor × α_factor
 ```
 
 **参数**:
+
 - `gamma=1.5`: 调制因子
 - `alpha=0.25`: 平衡正负样本
 
 **代码实现**:
+
 ```python
 def forward(self, pred, label):
     loss = F.binary_cross_entropy_with_logits(pred, label, reduction="none")
@@ -114,6 +120,7 @@ def forward(self, pred, label):
 **原理**: YOLOv8+ 使用分布表示边界框的四个边（左、上、右、下），每个边被建模为一个分布。
 
 **公式**:
+
 ```
 target = target.clamp(0, reg_max - 1.01)
 tl = target.long()  # 目标左侧
@@ -124,6 +131,7 @@ loss = CE(pred_dist, tl) × wl + CE(pred_dist, tr) × wr
 ```
 
 **代码实现**:
+
 ```python
 def __call__(self, pred_dist, target):
     target = target.clamp_(0, self.reg_max - 1 - 0.01)
@@ -131,8 +139,9 @@ def __call__(self, pred_dist, target):
     tr = tl + 1
     wl = tr - target
     wr = 1 - wl
-    return (F.cross_entropy(pred_dist, tl, reduction="none") * wl +
-            F.cross_entropy(pred_dist, tr, reduction="none") * wr).mean(-1, keepdim=True)
+    return (
+        F.cross_entropy(pred_dist, tl, reduction="none") * wl + F.cross_entropy(pred_dist, tr, reduction="none") * wr
+    ).mean(-1, keepdim=True)
 ```
 
 ### 4. BboxLoss (边界框损失)
@@ -142,10 +151,12 @@ def __call__(self, pred_dist, target):
 **作用**: 计算边界框的 IoU 损失和 DFL 损失。
 
 **组成**:
+
 1. **IoU 损失**: 使用 CIoU (Complete IoU) 作为边界框回归损失
 2. **DFL 损失**: 分布焦点损失
 
 **公式**:
+
 ```
 weight = target_scores.sum(-1)[fg_mask]
 iou = CIoU(pred_bboxes[fg_mask], target_bboxes[fg_mask])
@@ -158,9 +169,9 @@ loss_dfl = loss_dfl.sum() / target_scores_sum
 ```
 
 **代码实现**:
+
 ```python
-def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes,
-            target_scores, target_scores_sum, fg_mask):
+def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
     weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
     iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
     loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
@@ -182,6 +193,7 @@ def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes,
 **作用**: 处理旋转边界框 (OBB) 的损失计算。
 
 **与 BboxLoss 的区别**:
+
 - 使用 `probiou` (Probabilistic IoU) 代替普通 IoU
 - 处理带角度的边界框
 
@@ -192,6 +204,7 @@ def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes,
 **作用**: 计算姿态估计中关键点的损失，基于 OKS (Object Keypoint Similarity)。
 
 **公式**:
+
 ```
 d = (pred_x - gt_x)² + (pred_y - gt_y)²
 e = d / (2σ² × area)
@@ -199,6 +212,7 @@ loss = kpt_loss_factor × (1 - exp(-e)) × kpt_mask
 ```
 
 **参数**:
+
 - `sigmas`: 每个关键点的标准差，用于归一化
 
 ---
@@ -214,15 +228,18 @@ Task Aligned Learning 是 Ultralytics YOLOv8+ 的核心创新，用于将正负�
 **作用**: 将 ground truth 对象分配给 anchor points，同时考虑分类和定位质量。
 
 **核心思想**: 使用一个统一的度量标准来评估 anchor 与 gt 的匹配程度，该度量标准同时考虑：
+
 1. 分类得分 (classification score)
 2. 定位质量 (IoU)
 
 **对齐度量公式**:
+
 ```
 align_metric = score^α × iou^β
 ```
 
 参数:
+
 - `alpha=0.5`: 分类权重
 - `beta=6.0`: 定位权重
 - `topk=13`: 每个 GT 选择 top-k 个候选 anchor
@@ -264,6 +281,7 @@ def forward(self, pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, mask_g
 **位置**: `ultralytics/utils/tal.py:318`
 
 继承 `TaskAlignedAssigner`，专门用于旋转边界框：
+
 - 使用 `probiou` 代替 `bbox_iou`
 - 重写 `select_candidates_in_gts` 方法以处理旋转框
 
@@ -278,6 +296,7 @@ def forward(self, pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, mask_g
 **作用**: YOLOv8 目标检测的基础损失类，其他任务损失类都继承自它。
 
 **初始化**:
+
 ```python
 def __init__(self, model, tal_topk=10):
     self.bce = nn.BCEWithLogitsLoss(reduction="none")
@@ -292,6 +311,7 @@ def __init__(self, model, tal_topk=10):
 ```
 
 **损失组成**:
+
 1. **分类损失 (BCE)**: `loss[1] = self.bce(pred_scores, target_scores) / target_scores_sum`
 2. **边界框 IoU 损失**: `loss[0]`
 3. **DFL 损失**: `loss[2]`
@@ -320,7 +340,7 @@ def __call__(self, preds, batch):
         anchor_points * stride_tensor,
         gt_labels,
         gt_bboxes,
-        mask_gt
+        mask_gt,
     )
 
     # 6. 计算分类损失
@@ -328,9 +348,15 @@ def __call__(self, preds, batch):
 
     # 7. 计算边界框损失 (如果有正样本)
     if fg_mask.sum():
-        loss[0], loss[2] = self.bbox_loss(pred_distri, pred_bboxes, anchor_points,
-                                          target_bboxes / stride_tensor, target_scores,
-                                          target_scores_sum, fg_mask)
+        loss[0], loss[2] = self.bbox_loss(
+            pred_distri,
+            pred_bboxes,
+            anchor_points,
+            target_bboxes / stride_tensor,
+            target_scores,
+            target_scores_sum,
+            fg_mask,
+        )
 
     # 8. 应用损失权重
     loss[0] *= self.hyp.box  # box gain
@@ -347,9 +373,11 @@ def __call__(self, preds, batch):
 **继承**: `v8DetectionLoss`
 
 **额外损失**:
+
 - **分割损失**: 使用原型掩码 (prototype masks) 进行实例分割
 
 **损失组成**:
+
 1. `loss[0]`: 边界框损失
 2. `loss[1]`: 分割损失 (新增)
 3. `loss[2]`: 分类损失
@@ -361,13 +389,14 @@ def __call__(self, preds, batch):
 # 单个掩码损失计算
 @staticmethod
 def single_mask_loss(gt_mask, pred, proto, xyxy, area):
-    """使用 einsum 计算预测掩码并计算 BCE 损失"""
-    pred_mask = torch.einsum('in,nhw->ihw', pred, proto)  # (n, 32) @ (32, 80, 80) -> (n, 80, 80)
+    """使用 einsum 计算预测掩码并计算 BCE 损失."""
+    pred_mask = torch.einsum("in,nhw->ihw", pred, proto)  # (n, 32) @ (32, 80, 80) -> (n, 80, 80)
     loss = F.binary_cross_entropy_with_logits(pred_mask, gt_mask, reduction="none")
     return (crop_mask(loss, xyxy).mean(dim=(1, 2)) / area).sum()
 ```
 
 **分割损失计算流程**:
+
 1. 预测掩码系数与原型掩码相乘生成实例掩码
 2. 裁剪损失到边界框区域
 3. 按面积归一化
@@ -379,10 +408,12 @@ def single_mask_loss(gt_mask, pred, proto, xyxy, area):
 **继承**: `v8DetectionLoss`
 
 **额外损失**:
+
 - **关键点损失**: 基于 OKS (Object Keypoint Similarity)
 - **关键点目标性损失**: 判断关键点是否存在
 
 **损失组成**:
+
 1. `loss[0]`: 边界框损失
 2. `loss[1]`: 关键点损失
 3. `loss[2]`: 关键点目标性损失
@@ -390,10 +421,11 @@ def single_mask_loss(gt_mask, pred, proto, xyxy, area):
 5. `loss[4]`: DFL 损失
 
 **关键点解码**:
+
 ```python
 @staticmethod
 def kpts_decode(anchor_points, pred_kpts):
-    """将预测的关键点坐标解码到图像坐标"""
+    """将预测的关键点坐标解码到图像坐标."""
     y = pred_kpts.clone()
     y[..., :2] *= 2.0
     y[..., 0] += anchor_points[:, [0]] - 0.5
@@ -408,11 +440,13 @@ def kpts_decode(anchor_points, pred_kpts):
 **继承**: `v8DetectionLoss`
 
 **特殊之处**:
+
 - 使用 `RotatedTaskAlignedAssigner`
 - 使用 `RotatedBboxLoss`
 - 预测额外的角度信息
 
 **边界框解码**:
+
 ```python
 def bbox_decode(self, anchor_points, pred_dist, pred_angle):
     if self.use_dfl:
@@ -428,6 +462,7 @@ def bbox_decode(self, anchor_points, pred_dist, pred_angle):
 **作用**: 图像分类任务的损失计算
 
 **实现**:
+
 ```python
 def __call__(self, preds, batch):
     preds = preds[1] if isinstance(preds, (list, tuple)) else preds
@@ -495,29 +530,34 @@ self.criterion(preds, batch)  # 例如 v8DetectionLoss
 **作用**: DETR (DEtection TRansformer) 模型的损失计算
 
 **特点**:
+
 - 使用匈牙利匹配器 (HungarianMatcher) 进行样本分配
 - 包含辅助损失 (auxiliary loss) 用于中间 decoder 层
 - 支持 Focal Loss 和 Varifocal Loss
 
 **损失组成**:
+
 ```python
 self.loss_gain = {
-    "class": 1,      # 分类损失权重
-    "bbox": 5,       # L1 边界框损失权重
-    "giou": 2,       # GIoU 损失权重
-    "no_object": 0.1, # 无目标损失权重
-    "mask": 1,       # 掩码损失权重 (未使用)
-    "dice": 1        # Dice 损失权重 (未使用)
+    "class": 1,  # 分类损失权重
+    "bbox": 5,  # L1 边界框损失权重
+    "giou": 2,  # GIoU 损失权重
+    "no_object": 0.1,  # 无目标损失权重
+    "mask": 1,  # 掩码损失权重 (未使用)
+    "dice": 1,  # Dice 损失权重 (未使用)
 }
 ```
 
 **匈牙利匹配**:
+
 ```python
-self.matcher = HungarianMatcher(cost_gain={
-    "class": 2,  # 分类成本权重
-    "bbox": 5,   # 边界框成本权重
-    "giou": 2    # GIoU 成本权重
-})
+self.matcher = HungarianMatcher(
+    cost_gain={
+        "class": 2,  # 分类成本权重
+        "bbox": 5,  # 边界框成本权重
+        "giou": 2,  # GIoU 成本权重
+    }
+)
 ```
 
 ### E2EDetectLoss
@@ -527,10 +567,12 @@ self.matcher = HungarianMatcher(cost_gain={
 **作用**: 端到端检测损失，结合 one-to-many 和 one-to-one 检测
 
 **实现**:
+
 ```python
 def __init__(self, model):
     self.one2many = v8DetectionLoss(model, tal_topk=10)  # one-to-many 分配
-    self.one2one = v8DetectionLoss(model, tal_topk=1)    # one-to-one 分配
+    self.one2one = v8DetectionLoss(model, tal_topk=1)  # one-to-one 分配
+
 
 def __call__(self, preds, batch):
     one2many = preds["one2many"]
@@ -548,31 +590,31 @@ def __call__(self, preds, batch):
 
 ```yaml
 # Hyperparameters
-lr0: 0.01          # 初始学习率
-lrf: 0.01          # 最终学习率因子
-momentum: 0.937    # SGD 动量或 Adam beta1
-weight_decay: 0.0005  # 权重衰减
+lr0: 0.01 # 初始学习率
+lrf: 0.01 # 最终学习率因子
+momentum: 0.937 # SGD 动量或 Adam beta1
+weight_decay: 0.0005 # 权重衰减
 
 # 损失函数增益
-box: 7.5           # box loss gain
-cls: 0.5           # classification loss gain
-dfl: 1.5           # distribution focal loss gain
-pose: 12.0         # pose loss gain (姿态估计)
-kobj: 1.0          # keypoint objectness loss gain (姿态估计)
+box: 7.5 # box loss gain
+cls: 0.5 # classification loss gain
+dfl: 1.5 # distribution focal loss gain
+pose: 12.0 # pose loss gain (姿态估计)
+kobj: 1.0 # keypoint objectness loss gain (姿态估计)
 
 # 数据增强
-hsv_h: 0.015       # HSV-Hue augmentation
-hsv_s: 0.7         # HSV-Saturation augmentation
-hsv_v: 0.4         # HSV-Value augmentation
-degrees: 0.0       # rotation (+/- deg)
-translate: 0.1     # translation (+/- fraction)
-scale: 0.5         # scale gain
-shear: 0.0         # shear (+/- deg)
-perspective: 0.0   # perspective transform
-flipud: 0.0        # vertical flip probability
-fliplr: 0.5        # horizontal flip probability
-mosaic: 1.0        # mosaic augmentation probability
-mixup: 0.0         # MixUp augmentation probability
+hsv_h: 0.015 # HSV-Hue augmentation
+hsv_s: 0.7 # HSV-Saturation augmentation
+hsv_v: 0.4 # HSV-Value augmentation
+degrees: 0.0 # rotation (+/- deg)
+translate: 0.1 # translation (+/- fraction)
+scale: 0.5 # scale gain
+shear: 0.0 # shear (+/- deg)
+perspective: 0.0 # perspective transform
+flipud: 0.0 # vertical flip probability
+fliplr: 0.5 # horizontal flip probability
+mosaic: 1.0 # mosaic augmentation probability
+mixup: 0.0 # MixUp augmentation probability
 ```
 
 ---
