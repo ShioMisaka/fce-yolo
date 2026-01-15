@@ -57,26 +57,26 @@ torch.nn.Module
 ```python
 class Detect(nn.Module):
     # 类级别属性（所有实例共享）
-    dynamic = False      # 强制重建网格
-    export = False       # 导出模式标志
-    format = None        # 导出格式
-    end2end = False      # 端到端检测模式
-    max_det = 300        # 每张图像最大检测数
-    shape = None         # 输入形状缓存
-    anchors = torch.empty(0)    # anchor points 缓存
-    strides = torch.empty(0)    # 步长缓存
-    legacy = False       # 向后兼容标志（v3/v5/v8/v9）
-    xyxy = False         # 输出格式：xyxy 或 xywh
+    dynamic = False  # 强制重建网格
+    export = False  # 导出模式标志
+    format = None  # 导出格式
+    end2end = False  # 端到端检测模式
+    max_det = 300  # 每张图像最大检测数
+    shape = None  # 输入形状缓存
+    anchors = torch.empty(0)  # anchor points 缓存
+    strides = torch.empty(0)  # 步长缓存
+    legacy = False  # 向后兼容标志（v3/v5/v8/v9）
+    xyxy = False  # 输出格式：xyxy 或 xywh
 ```
 
 ### 实例属性
 
 ```python
 def __init__(self, nc=80, ch=()):
-    self.nc = nc              # 类别数
-    self.nl = len(ch)         # 检测层数量
-    self.reg_max = 16         # DFL 通道数
-    self.no = nc + reg_max * 4 # 每个 anchor 的输出数
+    self.nc = nc  # 类别数
+    self.nl = len(ch)  # 检测层数量
+    self.reg_max = 16  # DFL 通道数
+    self.no = nc + reg_max * 4  # 每个 anchor 的输出数
     self.stride = torch.zeros(self.nl)  # 步长（build 时计算）
 
     # 边界框分支 (cv2)
@@ -86,7 +86,7 @@ def __init__(self, nc=80, ch=()):
     self.cv3 = nn.ModuleList(...)  # 每个检测层一个分支
 
     # DFL 模块
-    self.dfl = DFL(self.reg_max)   # 分布焦点损失解码器
+    self.dfl = DFL(self.reg_max)  # 分布焦点损失解码器
 ```
 
 ---
@@ -101,7 +101,7 @@ def __init__(self, nc: int = 80, ch: tuple = ()):
     Args:
         nc (int): 类别数量，默认为 80 (COCO 数据集)
         ch (tuple): 来自骨干网络/颈部网络的特征图通道数
-                   例如: (256, 512, 1024) 表示 3 个尺度的特征图
+        例如: (256, 512, 1024) 表示 3 个尺度的特征图.
     """
 ```
 
@@ -110,10 +110,10 @@ def __init__(self, nc: int = 80, ch: tuple = ()):
 #### 1. 通道数计算
 
 ```python
-self.nc = nc                      # 类别数
-self.nl = len(ch)                 # 检测层数量，通常为 3
-self.reg_max = 16                 # DFL 通道数
-self.no = nc + self.reg_max * 4   # 每个位置的总输出数
+self.nc = nc  # 类别数
+self.nl = len(ch)  # 检测层数量，通常为 3
+self.reg_max = 16  # DFL 通道数
+self.no = nc + self.reg_max * 4  # 每个位置的总输出数
 
 # 计算中间通道数
 # c2: 边界框分支的中间通道数
@@ -123,6 +123,7 @@ c3 = max(ch[0], min(self.nc, 100))
 ```
 
 **通道数设计原则**:
+
 - `c2`: 至少为 16，至少为 `ch[0] // 4`，至少为 `reg_max * 4`（即 64）
 - `c3`: 至少为 `ch[0]`，但不超过 `min(nc, 100)`
 
@@ -131,18 +132,21 @@ c3 = max(ch[0], min(self.nc, 100))
 ```python
 self.cv2 = nn.ModuleList(
     nn.Sequential(
-        Conv(x, c2, 3),           # 3x3 卷积
-        Conv(c2, c2, 3),          # 3x3 卷积
-        nn.Conv2d(c2, 4 * self.reg_max, 1)  # 1x1 卷积输出
-    ) for x in ch
+        Conv(x, c2, 3),  # 3x3 卷积
+        Conv(c2, c2, 3),  # 3x3 卷积
+        nn.Conv2d(c2, 4 * self.reg_max, 1),  # 1x1 卷积输出
+    )
+    for x in ch
 )
 ```
 
 **输出**: `4 * reg_max = 64` 通道
+
 - 边界框的 4 个边（左、上、右、下）每个用 `reg_max` 个值表示
 - 例如：reg_max=16 时，每个边用 16 个值建模其分布
 
 **网络结构示意**:
+
 ```
 输入特征图 (ch[i])
     ↓
@@ -163,13 +167,7 @@ Conv(64, 1)  # 无激活函数
 
 ```python
 if self.legacy:
-    self.cv3 = nn.ModuleList(
-        nn.Sequential(
-            Conv(x, c3, 3),
-            Conv(c3, c3, 3),
-            nn.Conv2d(c3, self.nc, 1)
-        ) for x in ch
-    )
+    self.cv3 = nn.ModuleList(nn.Sequential(Conv(x, c3, 3), Conv(c3, c3, 3), nn.Conv2d(c3, self.nc, 1)) for x in ch)
 ```
 
 ##### 现代 YOLO (v11 等)
@@ -188,6 +186,7 @@ else:
 **输出**: `nc` 通道（类别数）
 
 **现代模式的优势**:
+
 - 使用深度可分离卷积 (DWConv) 减少参数量
 - 更轻量级，适合移动端部署
 
@@ -200,6 +199,7 @@ self.dfl = DFL(self.reg_max) if self.reg_max > 1 else nn.Identity()
 ```
 
 **DFL (Distribution Focal Loss)**:
+
 - 将边界框坐标建模为分布而不是单一值
 - 提高边界框回归的精度
 - 详见 `notes/loss_functions_implementation.md`
@@ -213,6 +213,7 @@ if self.end2end:
 ```
 
 **端到端检测**:
+
 - 用于 YOLOv10 等模型
 - 同时训练 one-to-many 和 one-to-one 匹配
 - 推理时只使用 one-to-one 分支，无需 NMS
@@ -250,14 +251,14 @@ if self.end2end:
 
 ```python
 def forward(self, x: list[torch.Tensor]) -> list[torch.Tensor] | tuple:
-    """前向传播
+    """前向传播.
 
     Args:
         x: 来自骨干网络/颈部网络的特征图列表
-           例如: [feat1, feat2, feat3]
-           feat1: (B, 256, 80, 80)  - P3 特征图
-           feat2: (B, 512, 40, 40)  - P4 特征图
-           feat3: (B, 1024, 20, 20) - P5 特征图
+        例如: [feat1, feat2, feat3]
+        feat1: (B, 256, 80, 80) - P3 特征图
+        feat2: (B, 512, 40, 40) - P4 特征图
+        feat3: (B, 1024, 20, 20) - P5 特征图
 
     Returns:
         训练模式: list[torch.Tensor] - 原始预测输出
@@ -323,6 +324,7 @@ x[i].shape = (batch_size, 64 + nc, height, width)
 ```
 
 **示例** (nc=80, 3 个检测层):
+
 ```
 x[0]: (B, 144, 80, 80)  # P3 特征图，大检测量，小感受野
 x[1]: (B, 144, 40, 40)  # P4 特征图
@@ -333,7 +335,7 @@ x[2]: (B, 144, 20, 20)  # P5 特征图，小检测量，大感受野
 
 ```python
 def _inference(self, x: list[torch.Tensor]) -> torch.Tensor:
-    """推理时的处理流程"""
+    """推理时的处理流程."""
     # 1. 获取输入形状
     shape = x[0].shape  # (B, C, H, W)
 
@@ -377,7 +379,7 @@ output.shape = (batch_size, 4 + nc, total_anchors)
 
 ```python
 def decode_bboxes(self, bboxes: torch.Tensor, anchors: torch.Tensor, xywh: bool = True) -> torch.Tensor:
-    """将预测的分布解码为边界框坐标
+    """将预测的分布解码为边界框坐标.
 
     Args:
         bboxes: (B, 4*reg_max, total_anchors) - 预测的边界框分布
@@ -401,15 +403,14 @@ def decode_bboxes(self, bboxes: torch.Tensor, anchors: torch.Tensor, xywh: bool 
 
 ```python
 def dist2bbox(distance, anchor_points, xywh=True, dim=-1):
-    """将距离分布转换为边界框坐标
+    """将距离分布转换为边界框坐标.
 
     Args:
         distance: (..., 4*reg_max) - 预测的距离分布
         anchor_points: (..., 2) - anchor points (中心点坐标)
         xywh: 输出格式 (True=xywh, False=xyxy)
         dim: 分割维度
-
-    流程:
+        流程:
         1. 将距离分为左、上、右、下四部分
         2. DFL 解码: 将分布转换为单一距离值
         3. 计算边界框坐标
@@ -435,8 +436,9 @@ def dist2bbox(distance, anchor_points, xywh=True, dim=-1):
 ```python
 # DFL 类定义 (ultralytics/nn/modules/block.py)
 
+
 class DFL(nn.Module):
-    """Distribution Focal Loss 解码器"""
+    """Distribution Focal Loss 解码器."""
 
     def __init__(self, reg_max=16):
         super().__init__()
@@ -444,7 +446,7 @@ class DFL(nn.Module):
         self.proj = nn.Linear(reg_max, 1)  # 投影层
 
     def forward(self, x):
-        """将分布转换为值
+        """将分布转换为值.
 
         Args:
             x: (B, 4*reg_max, anchors) - 边界框分布
@@ -502,20 +504,16 @@ class DFL(nn.Module):
 
 ```python
 def forward_end2end(self, x: list[torch.Tensor]) -> dict | tuple:
-    """端到端检测前向传播
+    """端到端检测前向传播.
 
-    训练时返回包含 one2many 和 one2one 的字典
-    推理时使用 one2one 分支并后处理
+    训练时返回包含 one2many 和 one2one 的字典 推理时使用 one2one 分支并后处理
     """
     # 1. 分离梯度用于 one2one
     x_detach = [xi.detach() for xi in x]
 
     # 2. one2one 分支 (使用 detached features)
     one2one = [
-        torch.cat(
-            (self.one2one_cv2[i](x_detach[i]), self.one2one_cv3[i](x_detach[i])),
-            1
-        ) for i in range(self.nl)
+        torch.cat((self.one2one_cv2[i](x_detach[i]), self.one2one_cv3[i](x_detach[i])), 1) for i in range(self.nl)
     ]
 
     # 3. one2many 分支 (正常训练)
@@ -534,19 +532,19 @@ def forward_end2end(self, x: list[torch.Tensor]) -> dict | tuple:
 
 ### 端到端检测优势
 
-| 特性 | 传统 YOLO | 端到端 YOLO |
-|-----|----------|------------|
+| 特性     | 传统 YOLO      | 端到端 YOLO              |
+| -------- | -------------- | ------------------------ |
 | 训练策略 | 仅 one-to-many | one-to-many + one-to-one |
-| 推理流程 | 预测 → NMS | 预测 (无需 NMS) |
-| 延迟 | NMS 增加延迟 | 更低延迟 |
-| 精度 | 高 | 相当或更高 |
+| 推理流程 | 预测 → NMS     | 预测 (无需 NMS)          |
+| 延迟     | NMS 增加延迟   | 更低延迟                 |
+| 精度     | 高             | 相当或更高               |
 
 ### 后处理函数
 
 ```python
 @staticmethod
 def postprocess(preds: torch.Tensor, max_det: int, nc: int = 80) -> torch.Tensor:
-    """端到端检测的后处理
+    """端到端检测的后处理.
 
     Args:
         preds: (batch_size, num_anchors, 4 + nc) - 原始预测
@@ -572,11 +570,14 @@ def postprocess(preds: torch.Tensor, max_det: int, nc: int = 80) -> torch.Tensor
     i = torch.arange(batch_size)[..., None]
 
     # 4. 组装最终输出
-    return torch.cat([
-        boxes[i, index // nc],      # 边界框
-        scores[..., None],           # 最大类别得分
-        (index % nc)[..., None].float()  # 类别索引
-    ], dim=-1)
+    return torch.cat(
+        [
+            boxes[i, index // nc],  # 边界框
+            scores[..., None],  # 最大类别得分
+            (index % nc)[..., None].float(),  # 类别索引
+        ],
+        dim=-1,
+    )
 ```
 
 ---
@@ -587,7 +588,7 @@ def postprocess(preds: torch.Tensor, max_det: int, nc: int = 80) -> torch.Tensor
 
 ```python
 def make_anchors(feats, strides, grid_cell_offset=0.5):
-    """为每个特征图生成 anchor points
+    """为每个特征图生成 anchor points.
 
     Args:
         feats: 特征图列表 [(B, C, H1, W1), (B, C, H2, W2), ...]
@@ -643,7 +644,7 @@ def make_anchors(feats, strides, grid_cell_offset=0.5):
 
 ```python
 def bias_init(self):
-    """初始化检测头的偏置
+    """初始化检测头的偏置.
 
     初始化策略:
     1. 边界框分支偏置设为 1.0
@@ -679,12 +680,14 @@ bias = log(5 / nc / (640 / s) ** 2)
 ```
 
 **解释**:
+
 - **目标**: 设置初始预测概率，使模型在训练初期就能产生合理的预测
 - **5**: 预期每张图约有 5 个目标
 - **nc**: 类别数，用于归一化
 - **(640/s)²**: 特征图尺寸相对于输入图像的缩放因子
 
 **示例计算** (nc=80, stride=8):
+
 ```
 scale_factor = (640 / 8) ** 2 = 6400
 bias = log(5 / 80 / 6400) = log(0.00000977) ≈ -11.54
@@ -709,9 +712,9 @@ a[-1].bias.data[:] = 1.0
 ```python
 # 输入特征图 (3 个尺度)
 x = [
-    torch.randn(1, 256, 80, 80),   # P3: 1x256x80x80
-    torch.randn(1, 512, 40, 40),   # P4: 1x512x40x40
-    torch.randn(1, 1024, 20, 20)  # P5: 1x1024x20x20
+    torch.randn(1, 256, 80, 80),  # P3: 1x256x80x80
+    torch.randn(1, 512, 40, 40),  # P4: 1x512x40x40
+    torch.randn(1, 1024, 20, 20),  # P5: 1x1024x20x20
 ]
 
 # Detect 头部
@@ -732,8 +735,8 @@ output = [
 ]
 
 # 每个张量的通道分解
-tensor_[:, :64, :, :]   # 边界框分布 (4 * reg_max)
-tensor_[:, 64:, :, :]   # 分类得分 (80 个类别)
+tensor_[:, :64, :, :]  # 边界框分布 (4 * reg_max)
+tensor_[:, 64:, :, :]  # 分类得分 (80 个类别)
 ```
 
 ### 推理模式
@@ -759,32 +762,32 @@ output[:, 4:, :]  # 80 个类别的概率 (0-1)
 
 ### Detect vs Segment
 
-| 特性 | Detect | Segment |
-|-----|--------|---------|
-| 边界框预测 | ✓ | ✓ |
-| 分类预测 | ✓ | ✓ |
-| 掩码预测 | ✗ | ✓ |
-| 输出通道 | 64+nc | 64+nc+nm |
-| 额外组件 | 无 | Proto + cv4 |
+| 特性       | Detect | Segment     |
+| ---------- | ------ | ----------- |
+| 边界框预测 | ✓      | ✓           |
+| 分类预测   | ✓      | ✓           |
+| 掩码预测   | ✗      | ✓           |
+| 输出通道   | 64+nc  | 64+nc+nm    |
+| 额外组件   | 无     | Proto + cv4 |
 
 ### Detect vs Pose
 
-| 特性 | Detect | Pose |
-|-----|--------|------|
-| 边界框预测 | ✓ | ✓ |
-| 分类预测 | ✓ | ✓ |
-| 关键点预测 | ✗ | ✓ |
-| 输出通道 | 64+nc | 64+nc+nk |
-| 额外组件 | 无 | cv4 |
+| 特性       | Detect | Pose     |
+| ---------- | ------ | -------- |
+| 边界框预测 | ✓      | ✓        |
+| 分类预测   | ✓      | ✓        |
+| 关键点预测 | ✗      | ✓        |
+| 输出通道   | 64+nc  | 64+nc+nk |
+| 额外组件   | 无     | cv4      |
 
 ### Detect vs OBB
 
-| 特性 | Detect | OBB |
-|-----|--------|-----|
+| 特性       | Detect   | OBB      |
+| ---------- | -------- | -------- |
 | 边界框预测 | ✓ (水平) | ✓ (旋转) |
-| 角度预测 | ✗ | ✓ |
-| 输出通道 | 64+nc | 64+nc+ne |
-| IoU 计算 | CIoU | ProbIoU |
+| 角度预测   | ✗        | ✓        |
+| 输出通道   | 64+nc    | 64+nc+ne |
+| IoU 计算   | CIoU     | ProbIoU  |
 
 ---
 

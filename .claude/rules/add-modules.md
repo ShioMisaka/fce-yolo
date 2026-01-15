@@ -13,9 +13,9 @@
 import torch
 import torch.nn as nn
 
+
 class YourNewModule(nn.Module):
-    """
-    模块描述
+    """模块描述.
 
     Args:
         inp: 输入通道数
@@ -38,10 +38,10 @@ class YourNewModule(nn.Module):
 
 ```python
 __all__ = (
+    "BiCoordCrossAtt",
     "BiFPN_Concat",
     "CoordAtt",
     "CoordCrossAtt",
-    "BiCoordCrossAtt",
     "YourNewModule",  # 添加新模块
 )
 ```
@@ -51,14 +51,7 @@ __all__ = (
 在 `ultralytics/nn/tasks.py` 的导入列表中添加新模块：
 
 ```python
-from ultralytics.nn.modules import (
-    # ... 其他模块 ...
-    BiFPN_Concat,
-    CoordAtt,
-    CoordCrossAtt,
-    BiCoordCrossAtt,
-    YourNewModule,  # 添加新模块
-)
+
 ```
 
 ### 步骤 4: 添加 YAML 参数解析逻辑
@@ -199,8 +192,8 @@ YOLO 模型配置文件使用以下格式：
 
 ```yaml
 # [from, repeats, module, args]
-- [-1, 1, Conv, [64, 3, 2]]  # 0-P1/2
-- [[-1, 6], 1, BiFPN_Concat, []]  # 融合多层
+- [-1, 1, Conv, [64, 3, 2]] # 0-P1/2
+- [[-1, 6], 1, BiFPN_Concat, []] # 融合多层
 ```
 
 - `from`: 输入层索引，-1 表示上一层，列表表示多层输入
