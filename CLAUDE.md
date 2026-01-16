@@ -192,6 +192,40 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 5. 在模型 YAML 中使用
 6. 更新文档
 
+## Training Visualization
+
+### Training Comparison Plot
+
+`script/plot_training_comparison.py` 提供了多模型训练结果对比可视化功能。
+
+**功能特性：**
+- 支持多模型训练曲线对比
+- 预定义指标组：`all`, `loss`, `train_loss`, `val_loss`, `cls_loss`, `box_loss`, `dfl_loss`, `map`, `pr`
+- 自定义指标列表支持
+- 自动根据模型名和指标生成文件名
+- 每个模型可自定义颜色
+- Ultralytics 风格样式
+
+**使用示例：**
+
+```python
+# 模型配置
+model1 = {"name": "YOLO11n", "result": "runs/detect/train_yolo11/results.csv", "color": "#042AFF"}
+model2 = {"name": "FCE-YOLO v1", "result": "runs/detect/train_fce-yolo_1/results.csv", "color": "#0BDBEB"}
+MODELS = [model1, model2]
+
+# 使用预定义指标组
+METRICS = "cls_loss"  # 只绘制分类损失
+
+# 自动生成文件名并保存
+SAVE_PATH = "auto"  # 生成: YOLO11n_vs_FCE-YOLO_v1_cls_Loss.png
+```
+
+**运行脚本：**
+```bash
+python script/plot_training_comparison.py
+```
+
 ## Adding a New Task
 
 1. Create `ultralytics/models/yolo/mytask/` directory
