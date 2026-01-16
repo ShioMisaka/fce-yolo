@@ -55,22 +55,7 @@ pip install -e .
 pip install -e ".[export,solutions,logging]"
 ```
 
-## Git Commit Conventions
-
-所有提交使用中文，遵循 **Conventional Commits** 格式：
-
-### 类型
-- `feat:` - 新功能
-- `fix:` - 修复 bug
-- `docs:` - 文档变更
-- `refactor:` - 代码重构（无功能变化）
-- `test:` - 添加或更新测试
-- `chore:` - 维护任务、依赖、配置
-
-### 规则
-1. **标题行**：不超过 50 字符
-2. **正文**：多文件变更时必须用列表列出
-3. **无 AI 标识**：不包含 "生成于 AI"、"AI 协作" 等信息
+> Git 提交规范请参考：`.claude/rules/git-commit.md`
 
 ## High-Level Architecture
 
@@ -182,7 +167,7 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 
 ### 添加新模块
 
-> 详细流程请参考：`.claude/rules/add-modules.md`
+> 详细流程请参考：`.claude/skills/add-module/SKILL.md`
 
 简要步骤：
 1. 在 `ultralytics/nn/modules/fce_block.py` 中实现模块
@@ -197,34 +182,6 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 ### Training Comparison Plot
 
 `script/plot_training_comparison.py` 提供了多模型训练结果对比可视化功能。
-
-**功能特性：**
-- 支持多模型训练曲线对比
-- 预定义指标组：`all`, `loss`, `train_loss`, `val_loss`, `cls_loss`, `box_loss`, `dfl_loss`, `map`, `pr`
-- 自定义指标列表支持
-- 自动根据模型名和指标生成文件名
-- 每个模型可自定义颜色
-- Ultralytics 风格样式
-
-**使用示例：**
-
-```python
-# 模型配置
-model1 = {"name": "YOLO11n", "result": "runs/detect/train_yolo11/results.csv", "color": "#042AFF"}
-model2 = {"name": "FCE-YOLO v1", "result": "runs/detect/train_fce-yolo_1/results.csv", "color": "#0BDBEB"}
-MODELS = [model1, model2]
-
-# 使用预定义指标组
-METRICS = "cls_loss"  # 只绘制分类损失
-
-# 自动生成文件名并保存
-SAVE_PATH = "auto"  # 生成: YOLO11n_vs_FCE-YOLO_v1_cls_Loss.png
-```
-
-**运行脚本：**
-```bash
-python script/plot_training_comparison.py
-```
 
 ## Adding a New Task
 
