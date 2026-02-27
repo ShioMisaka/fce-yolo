@@ -27,6 +27,8 @@ from ultralytics.nn.modules import (
     A2C2f,
     AConv,
     ADown,
+    BiCoordCrossAtt,
+    BiFPN_Concat,
     Bottleneck,
     BottleneckCSP,
     C2f,
@@ -43,6 +45,8 @@ from ultralytics.nn.modules import (
     Conv,
     Conv2,
     ConvTranspose,
+    CoordAtt,
+    CoordCrossAtt,
     Detect,
     DWConv,
     DWConvTranspose2d,
@@ -68,10 +72,6 @@ from ultralytics.nn.modules import (
     YOLOEDetect,
     YOLOESegment,
     v10Detect,
-    BiFPN_Concat,
-    CoordAtt,
-    CoordCrossAtt,
-    BiCoordCrossAtt,
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, LOGGER, YAML, colorstr, emojis
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
