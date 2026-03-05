@@ -1,12 +1,12 @@
 """
-训练结果对比脚本
+训练结果对比脚本.
 
 使用方式: 直接修改下方 __main__ 中的模型配置和参数，然后运行脚本
 """
 
-import os
+from __future__ import annotations
+
 from pathlib import Path
-from typing import List, Dict, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,7 +14,7 @@ import pandas as pd
 
 
 def load_data(result_path: str) -> pd.DataFrame:
-    """加载训练结果数据"""
+    """加载训练结果数据."""
     path = Path(result_path)
     if not path.exists():
         raise FileNotFoundError(f"结果文件不存在: {result_path}")
@@ -24,8 +24,7 @@ def load_data(result_path: str) -> pd.DataFrame:
 # 预定义的指标组合
 METRIC_GROUPS = {
     "all": None,  # 默认四宫格
-    "loss": ["train/box_loss", "train/cls_loss", "train/dfl_loss",
-             "val/box_loss", "val/cls_loss", "val/dfl_loss"],
+    "loss": ["train/box_loss", "train/cls_loss", "train/dfl_loss", "val/box_loss", "val/cls_loss", "val/dfl_loss"],
     "train_loss": ["train/box_loss", "train/cls_loss", "train/dfl_loss"],
     "val_loss": ["val/box_loss", "val/cls_loss", "val/dfl_loss"],
     "cls_loss": ["train/cls_loss", "val/cls_loss"],
@@ -37,28 +36,34 @@ METRIC_GROUPS = {
 
 
 def plot_comparison(
-    models: List[Dict[str, str]],
-    metrics: Optional[List[str]] = None,
-    save_path: Optional[str] = None,
-    figsize: Optional[tuple] = None,
+    models: list[dict[str, str]],
+    metrics: list[str] | None = None,
+    save_path: str | None = None,
+    figsize: tuple | None = None,
     dpi: int = 200,
 ) -> None:
-    """
-    绘制训练结果对比图表
+    """绘制训练结果对比图表.
 
     Args:
         models: 模型配置列表，每个元素包含 name、result 和可选的 color 字段
         metrics: 要绘制的指标列表，None 表示绘制默认指标。
-                 也支持使用预定义组名: 'all', 'loss', 'train_loss', 'val_loss',
-                 'cls_loss', 'box_loss', 'dfl_loss', 'map', 'pr'
+        也支持使用预定义组名: 'all', 'loss', 'train_loss', 'val_loss', 'cls_loss', 'box_loss', 'dfl_loss', 'map', 'pr'
         save_path: 保存路径，None 表示显示图表
         figsize: 图片尺寸，None 表示自动根据指标数量调整
         dpi: 图片分辨率
     """
     # 默认 Ultralytics 风格配色
     default_colors = [
-        "#042AFF", "#0BDBEB", "#00DFB7", "#FF6FDD", "#FF444F",
-        "#CCED00", "#00F344", "#BD00FF", "#00B4FF", "#DD00BA",
+        "#042AFF",
+        "#0BDBEB",
+        "#00DFB7",
+        "#FF6FDD",
+        "#FF444F",
+        "#CCED00",
+        "#00F344",
+        "#BD00FF",
+        "#00B4FF",
+        "#DD00BA",
     ]
 
     metric_names = {
@@ -78,24 +83,26 @@ def plot_comparison(
     }
 
     # 设置 matplotlib 参数
-    plt.rcParams.update({
-        "font.size": 11,
-        "axes.linewidth": 1.0,
-        "axes.grid": True,
-        "grid.alpha": 0.3,
-        "lines.linewidth": 2,
-    })
+    plt.rcParams.update(
+        {
+            "font.size": 11,
+            "axes.linewidth": 1.0,
+            "axes.grid": True,
+            "grid.alpha": 0.3,
+            "lines.linewidth": 2,
+        }
+    )
 
     # 处理预定义指标组
     if isinstance(metrics, str) and metrics in METRIC_GROUPS:
         metrics = METRIC_GROUPS[metrics]
 
     # 加载数据并提取颜色
-    datas = []
+    data = []
     names = []
     colors = []
     for i, model in enumerate(models):
-        datas.append(load_data(model["result"]))
+        data.append(load_data(model["result"]))
         names.append(model["name"])
         # 使用模型指定的颜色，否则使用默认颜色
         colors.append(model.get("color", default_colors[i % len(default_colors)]))
@@ -114,28 +121,43 @@ def plot_comparison(
     if metrics is None:
         fig, axes = plt.subplots(2, 2, figsize=figsize, tight_layout=True)
 
-        _plot_panel(axes[0, 0], datas, names, colors,
-                   ["train/box_loss", "train/cls_loss", "train/dfl_loss"], "Train Loss", metric_names)
-        _plot_panel(axes[0, 1], datas, names, colors,
-                   ["metrics/mAP50-95(B)", "metrics/mAP50(B)"], "Metrics", metric_names)
-        _plot_panel(axes[1, 0], datas, names, colors,
-                   ["val/box_loss", "val/cls_loss", "val/dfl_loss"], "Val Loss", metric_names)
-        _plot_panel(axes[1, 1], datas, names, colors,
-                   ["metrics/precision(B)", "metrics/recall(B)"], "Precision & Recall", metric_names)
+        _plot_panel(
+            axes[0, 0],
+            data,
+            names,
+            colors,
+            ["train/box_loss", "train/cls_loss", "train/dfl_loss"],
+            "Train Loss",
+            metric_names,
+        )
+        _plot_panel(
+            axes[0, 1], data, names, colors, ["metrics/mAP50-95(B)", "metrics/mAP50(B)"], "Metrics", metric_names
+        )
+        _plot_panel(
+            axes[1, 0], data, names, colors, ["val/box_loss", "val/cls_loss", "val/dfl_loss"], "Val Loss", metric_names
+        )
+        _plot_panel(
+            axes[1, 1],
+            data,
+            names,
+            colors,
+            ["metrics/precision(B)", "metrics/recall(B)"],
+            "Precision & Recall",
+            metric_names,
+        )
     else:
         n = len(metrics)
         n_cols = min(3, n)
         n_rows = (n + n_cols - 1) // n_cols
 
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows), tight_layout=True)
+        _fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows), tight_layout=True)
 
         if n == 1:
             axes = np.array([axes])
         axes = axes.flatten()
 
         for i, metric in enumerate(metrics):
-            _plot_panel(axes[i], datas, names, colors, [metric],
-                       metric_names.get(metric, metric), metric_names)
+            _plot_panel(axes[i], data, names, colors, [metric], metric_names.get(metric, metric), metric_names)
 
         for i in range(n, len(axes)):
             axes[i].set_visible(False)
@@ -151,9 +173,8 @@ def plot_comparison(
     plt.close()
 
 
-def generate_filename(models: List[Dict[str, str]], metrics: Optional[List[str]] = None) -> str:
-    """
-    生成基于模型名称和指标的文件名
+def generate_filename(models: list[dict[str, str]], metrics: list[str] | None = None) -> str:
+    """生成基于模型名称和指标的文件名.
 
     Args:
         models: 模型配置列表
@@ -203,11 +224,18 @@ def generate_filename(models: List[Dict[str, str]], metrics: Optional[List[str]]
     return f"{model_names}_{metric_suffix}"
 
 
-def _plot_panel(ax, datas: List[pd.DataFrame], names: List[str], colors: List[str],
-                metrics: List[str], title: str, metric_names: Dict[str, str]) -> None:
-    """在单个子图上绘制指标"""
+def _plot_panel(
+    ax,
+    data: list[pd.DataFrame],
+    names: list[str],
+    colors: list[str],
+    metrics: list[str],
+    title: str,
+    metric_names: dict[str, str],
+) -> None:
+    """在单个子图上绘制指标."""
     for i, metric in enumerate(metrics):
-        for j, (data, name) in enumerate(zip(datas, names)):
+        for j, (data, name) in enumerate(zip(data, names)):
             if metric not in data.columns:
                 continue
 
@@ -223,8 +251,7 @@ def _plot_panel(ax, datas: List[pd.DataFrame], names: List[str], colors: List[st
             color = colors[j % len(colors)]
 
             # 绘制实际数据点
-            ax.plot(x, y, marker=".", markersize=4, linestyle="-",
-                   color=color, linewidth=1.5, label=label, alpha=0.8)
+            ax.plot(x, y, marker=".", markersize=4, linestyle="-", color=color, linewidth=1.5, label=label, alpha=0.8)
 
     ax.set_title(title, fontsize=12, fontweight="bold")
     ax.set_xlabel("Epoch", fontsize=10)
@@ -236,8 +263,8 @@ def _plot_panel(ax, datas: List[pd.DataFrame], names: List[str], colors: List[st
         ax.set_ylim(bottom=0)
 
 
-def print_summary(models: List[Dict[str, str]]) -> None:
-    """打印训练结果摘要"""
+def print_summary(models: list[dict[str, str]]) -> None:
+    """打印训练结果摘要."""
     print("\n" + "=" * 60)
     print("训练结果摘要")
     print("=" * 60)
@@ -269,8 +296,16 @@ if __name__ == "__main__":
     # 模型配置 - 修改这里进行对比
     # ============================================
     colors = [
-        "#042AFF", "#0BDBEB", "#00DFB7", "#FF6FDD", "#FF444F",
-        "#CCED00", "#00F344", "#BD00FF", "#00B4FF", "#DD00BA",
+        "#042AFF",
+        "#0BDBEB",
+        "#00DFB7",
+        "#FF6FDD",
+        "#FF444F",
+        "#CCED00",
+        "#00F344",
+        "#BD00FF",
+        "#00B4FF",
+        "#DD00BA",
     ]
     # 每个模型可以指定 name、result 和可选的 color
     # color 为空时自动使用默认颜色
