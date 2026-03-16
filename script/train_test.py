@@ -10,5 +10,5 @@ model.train(
     imgsz=640,
     batch=4,
     device="cpu",
-    name="train_fce-yolo_2"
+    name="train_fce-yolo_2",
 )
