@@ -1,5 +1,5 @@
 import torch
-import torch.nn as nn
+
 from ultralytics import YOLO
 
 # 1. 加载模型
@@ -15,22 +15,22 @@ coordatt_layers = []
 for name, m in network.named_modules():
     if "CoordAtt" in str(type(m)):
         # 记录引用和初始参数的副本
-        coordatt_layers.append({
-            "name": name,
-            "module": m,
-            # 记录 cv1 的初始权重
-            "orig_weight": m.cv1.conv.weight.detach().clone() if hasattr(m.cv1, 'conv') else m.cv1.weight.detach().clone()
-        })
+        coordatt_layers.append(
+            {
+                "name": name,
+                "module": m,
+                # 记录 cv1 的初始权重
+                "orig_weight": m.cv1.conv.weight.detach().clone()
+                if hasattr(m.cv1, "conv")
+                else m.cv1.weight.detach().clone(),
+            }
+        )
 
 # 4. 找到 BiFPN_Concat 模块并记录初始权重
 bifpn_layers = []
 for name, m in network.named_modules():
     if "BiFPN_Concat" in str(type(m)):
-        bifpn_layers.append({
-            "name": name,
-            "module": m,
-            "orig_w": m.w.detach().clone()
-        })
+        bifpn_layers.append({"name": name, "module": m, "orig_w": m.w.detach().clone()})
 
 # 打印找到的模块
 print(f"✅ 找到 {len(coordatt_layers)} 个 CoordAtt 模块")
@@ -70,9 +70,9 @@ loss.backward()
 optimizer.step()
 
 # 7. 验证 CoordAtt 权重变化与梯度
-print(f"\n{'='*70}")
-print(f"CoordAtt 模块测试结果:")
-print(f"{'='*70}")
+print(f"\n{'=' * 70}")
+print("CoordAtt 模块测试结果:")
+print(f"{'=' * 70}")
 print(f"{'模块名称':<25} | {'梯度(Grad)':<12} | {'更新状态':<8} | {'权重变化值':<15}")
 print("-" * 70)
 
@@ -82,10 +82,10 @@ for layer in coordatt_layers:
     orig_weight = layer["orig_weight"]
 
     # 获取 cv1 的当前权重
-    curr_weight = m.cv1.conv.weight.detach() if hasattr(m.cv1, 'conv') else m.cv1.weight.detach()
+    curr_weight = m.cv1.conv.weight.detach() if hasattr(m.cv1, "conv") else m.cv1.weight.detach()
 
     # 检查梯度是否存在
-    cv1_weight = m.cv1.conv.weight if hasattr(m.cv1, 'conv') else m.cv1.weight
+    cv1_weight = m.cv1.conv.weight if hasattr(m.cv1, "conv") else m.cv1.weight
     grad_val = cv1_weight.grad.abs().sum().item() if cv1_weight.grad is not None else 0
 
     # 计算权重差异
@@ -99,9 +99,9 @@ for layer in coordatt_layers:
         coordatt_updated_count += 1
 
 # 8. 验证 BiFPN_Concat 权重变化与梯度
-print(f"\n{'='*70}")
-print(f"BiFPN_Concat 模块测试结果:")
-print(f"{'='*70}")
+print(f"\n{'=' * 70}")
+print("BiFPN_Concat 模块测试结果:")
+print(f"{'=' * 70}")
 print(f"{'模块名称':<25} | {'梯度(Grad)':<12} | {'更新状态':<8} | {'权重变化值':<15}")
 print("-" * 70)
 
@@ -125,9 +125,9 @@ for layer in bifpn_layers:
         bifpn_updated_count += 1
 
 # 9. 输出结论
-print(f"\n{'='*70}")
-print(f"测试总结:")
-print(f"{'='*70}")
+print(f"\n{'=' * 70}")
+print("测试总结:")
+print(f"{'=' * 70}")
 print(f"CoordAtt:    {coordatt_updated_count}/{len(coordatt_layers)} 个模块已更新")
 print(f"BiFPN_Concat: {bifpn_updated_count}/{len(bifpn_layers)} 个模块已更新")
 

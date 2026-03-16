@@ -1,5 +1,5 @@
 import torch
-import torch.nn as nn
+
 from ultralytics import YOLO
 
 # 1. 加载模型
@@ -15,11 +15,7 @@ bifpn_layers = []
 for name, m in network.named_modules():
     if "BiFPN_Concat" in str(type(m)):
         # 记录引用和初始权重的副本
-        bifpn_layers.append({
-            "name": name,
-            "module": m,
-            "orig_w": m.w.detach().clone()
-        })
+        bifpn_layers.append({"name": name, "module": m, "orig_w": m.w.detach().clone()})
 
 if not bifpn_layers:
     print("❌ 未在模型中找到 BiFPN_Concat 模块。")
@@ -49,7 +45,7 @@ if isinstance(results, (list, tuple)):
     for res in results:
         if isinstance(res, torch.Tensor):
             loss += res.sum()
-        elif isinstance(res, (list, tuple)): # 针对某些版本输出的 [cls, box] 结构
+        elif isinstance(res, (list, tuple)):  # 针对某些版本输出的 [cls, box] 结构
             loss += sum(x.sum() for x in res if isinstance(x, torch.Tensor))
 else:
     loss = results.sum()
@@ -62,23 +58,22 @@ print(f"{'模块名称':<15} | {'梯度(Grad)':<12} | {'更新状态':<8} | {'�
 print("-" * 65)
 
 
-
 updated_count = 0
 for layer in bifpn_layers:
     m = layer["module"]
     orig_w = layer["orig_w"]
     curr_w = m.w.detach()
-    
+
     # 检查梯度是否存在
     grad_val = m.w.grad.abs().sum().item() if m.w.grad is not None else 0
-    
+
     # 计算权重差异
     diff = torch.abs(orig_w - curr_w).sum().item()
     is_updated = diff > 0
-    
+
     status = "✅ YES" if is_updated else "❌ NO"
     print(f"{layer['name']:<15} | {grad_val:<12.6f} | {status:<8} | {diff:.8f}")
-    
+
     if is_updated:
         updated_count += 1
 
