@@ -2,7 +2,6 @@ from ultralytics import YOLO
 
 # 1. 加载模型与迁移学习 (非常关键)
 # 既然你修改了网络结构 (BiFPN, CoordAtt等)，你需要用你的 custom yaml，
-# 但同时一定要加载官方的 .pt 权重来获取骨干网的预训练知识！
 
 # custom_yaml_path = "yolo11n-fce.yaml" # 替换为你修改了网络结构的 yaml 文件名
 custom_yaml_path = "yolo11n.yaml"
