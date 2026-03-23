@@ -11,11 +11,15 @@ Usage:
 
 from ultralytics import YOLO
 from pathlib import Path
+import argparse
 
 
-def stage1_warmup():
+def stage1_warmup(scale="n"):
     """
     阶段一：冻结主干网络预热训练
+
+    Args:
+        scale: 模型尺度 (n, s, m, l, x)
 
     目的：
     - 保护预训练的主干网络权重不被破坏
@@ -35,7 +39,7 @@ def stage1_warmup():
 
     # 使用 BiFPN 配置，加载官方预训练权重
     MODEL_YAML = "ultralytics/cfg/models/11/yolo11-bifpn.yaml"
-    PRETRAINED_WEIGHTS = "yolo11n.pt"
+    PRETRAINED_WEIGHTS = f"yolo11{scale}.pt"
 
     # 阶段一训练参数
     EPOCHS_S1 = 50
@@ -46,12 +50,12 @@ def stage1_warmup():
 
     # 保存路径
     PROJECT_NAME = "runs/detect"
-    EXPERIMENT_NAME_S1 = "bifpn_stage1_warmup"
+    EXPERIMENT_NAME_S1 = f"bifpn_{scale}_stage1_warmup"
 
     # 冻结层数：前 10 层（backbone）
     FREEZE_LAYERS = 10
 
-    print(f"\n阶段一配置:")
+    print(f"\n阶段一配置 (模型尺度: {scale}):")
     print(f"  模型: {MODEL_YAML}")
     print(f"  预训练权重: {PRETRAINED_WEIGHTS}")
     print(f"  冻结层数: {FREEZE_LAYERS} (backbone)")
@@ -101,7 +105,7 @@ def stage1_warmup():
         name=EXPERIMENT_NAME_S1,
         exist_ok=True,
         save=True,
-        save_period=5,
+        save_period=50,
 
         deterministic=False,
         verbose=True,
@@ -118,9 +122,13 @@ def stage1_warmup():
     return best_weights_s1
 
 
-def stage2_finetune(weights_path):
+def stage2_finetune(weights_path, scale="n"):
     """
     阶段二：全局微调
+
+    Args:
+        weights_path: 阶段一训练得到的权重路径
+        scale: 模型尺度 (n, s, m, l, x)
 
     目的：
     - 解冻所有层进行端到端训练
@@ -150,9 +158,9 @@ def stage2_finetune(weights_path):
 
     # 保存路径
     PROJECT_NAME = "runs/detect"
-    EXPERIMENT_NAME_S2 = "bifpn_stage2_finetune"
+    EXPERIMENT_NAME_S2 = f"bifpn_{scale}_stage2_finetune"
 
-    print(f"\n阶段二配置:")
+    print(f"\n阶段二配置 (模型尺度: {scale}):")
     print(f"  阶段一权重: {weights_path}")
     print(f"  训练轮次: {EPOCHS_S2}")
     print(f"  学习率: 0.001 (较小)")
@@ -200,7 +208,7 @@ def stage2_finetune(weights_path):
         name=EXPERIMENT_NAME_S2,
         exist_ok=True,
         save=True,
-        save_period=10,
+        save_period=50,
 
         deterministic=False,
         verbose=True,
@@ -212,34 +220,48 @@ def stage2_finetune(weights_path):
     print("=" * 60)
 
 
-def main():
-    """执行两阶段训练流程"""
+def main(scale="n"):
+    """执行两阶段训练流程
+
+    Args:
+        scale: 模型尺度 (n, s, m, l, x)
+    """
     print("\n" + "=" * 60)
-    print("YOLOv11-BiFPN 两阶段训练")
+    print(f"YOLOv11{scale}-BiFPN 两阶段训练")
     print("=" * 60)
     print("\n训练策略:")
     print("  阶段一: 冻结 backbone (前10层) → 预热 BiFPN")
     print("  阶段二: 解冻所有层 → 全局微调")
     print("\n总训练轮次: 50 + 250 = 300 epochs")
+    print(f"模型尺度: {scale}")
     print("=" * 60)
 
     # 阶段一：冻结预热
-    best_weights_s1 = stage1_warmup()
+    best_weights_s1 = stage1_warmup(scale)
 
     # 阶段二：全局微调
-    stage2_finetune(best_weights_s1)
+    stage2_finetune(best_weights_s1, scale)
 
     print("\n" + "=" * 60)
     print("两阶段训练全部完成!")
     print("=" * 60)
-    print("\n结果对比:")
-    print("  Baseline: runs/detect/baseline_yolo11n")
-    print("  BiFPN-S1: runs/detect/bifpn_stage1_warmup")
-    print("  BiFPN-S2: runs/detect/bifpn_stage2_finetune")
+    print(f"\n结果对比 (模型尺度: {scale}):")
+    print(f"  Baseline: runs/detect/baseline_yolo11{scale}")
+    print(f"  BiFPN-S1: runs/detect/bifpn_{scale}_stage1_warmup")
+    print(f"  BiFPN-S2: runs/detect/bifpn_{scale}_stage2_finetune")
     print("\n运行对比脚本:")
     print("  python script/compare_results.py")
     print("=" * 60 + "\n")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="YOLOv11-BiFPN 两阶段训练脚本")
+    parser.add_argument(
+        "--scale",
+        type=str,
+        default="n",
+        choices=["n", "s", "m", "l", "x"],
+        help="模型尺度 (n: nano, s: small, m: medium, l: large, x: xlarge)"
+    )
+    args = parser.parse_args()
+    main(scale=args.scale)

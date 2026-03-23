@@ -11,18 +11,26 @@ Usage:
 
 from ultralytics import YOLO
 from pathlib import Path
+import argparse
 
 
-def main():
-    """训练原生 YOLOv11n 模型"""
+def main(scale="n"):
+    """训练原生 YOLOv11 模型
+
+    Args:
+        scale: 模型尺度 (n, s, m, l, x)
+    """
 
     # ==================== 配置参数 ====================
+    # 模型尺度: n (nano), s (small), m (medium), l (large), x (xlarge)
+    SCALE = scale
+
     # 数据集路径
     DATA_PATH = "/mnt/ssd1/Dataset/haixi_jixieshou/yolo_dataset/data.yaml"
 
     # 模型配置
     MODEL_YAML = "ultralytics/cfg/models/11/yolo11.yaml"
-    PRETRAINED_WEIGHTS = "yolo11n.pt"
+    PRETRAINED_WEIGHTS = f"yolo11{SCALE}.pt"
 
     # 训练参数
     EPOCHS = 300
@@ -33,11 +41,11 @@ def main():
 
     # 保存路径
     PROJECT_NAME = "runs/detect"
-    EXPERIMENT_NAME = "baseline_yolo11n"
+    EXPERIMENT_NAME = f"baseline_yolo11{SCALE}"
 
     # ==================== 加载模型 ====================
     print("=" * 60)
-    print("YOLOv11n Baseline 训练")
+    print(f"YOLOv11{SCALE} Baseline 训练")
     print("=" * 60)
     print(f"\n配置:")
     print(f"  模型: {MODEL_YAML}")
@@ -88,7 +96,7 @@ def main():
         name=EXPERIMENT_NAME,
         exist_ok=True,           # 允许覆盖
         save=True,               # 保存检查点
-        save_period=10,          # 每 10 个 epoch 保存一次
+        save_period=50,          # 每 10 个 epoch 保存一次
 
         # 其他
         deterministic=False,
@@ -102,4 +110,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="YOLOv11 Baseline 训练脚本")
+    parser.add_argument(
+        "--scale",
+        type=str,
+        default="n",
+        choices=["n", "s", "m", "l", "x"],
+        help="模型尺度 (n: nano, s: small, m: medium, l: large, x: xlarge)"
+    )
+    args = parser.parse_args()
+    main(scale=args.scale)

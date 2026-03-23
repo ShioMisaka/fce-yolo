@@ -21,8 +21,8 @@ import numpy as np
 # ==================== 配置 ====================
 
 # 结果文件路径
-BASELINE_RESULTS = "runs/detect/baseline_yolo11n/results.csv"
-BIFPN_RESULTS = "runs/detect/bifpn_stage2_finetune/results.csv"
+BASELINE_RESULTS = "runs/detect/11vsbifpn_s_300/baseline_yolo11s/results.csv"
+BIFPN_RESULTS = "runs/detect/11vsbifpn_s_300/bifpn_s_stage2_finetune/results.csv"
 
 # 输出路径
 OUTPUT_DIR = "script"
