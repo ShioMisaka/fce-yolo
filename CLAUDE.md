@@ -179,6 +179,44 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 
 ## Training Visualization
 
+### Training Scripts
+
+项目提供了完整的训练对比脚本，支持不同模型尺度的 Baseline 和 BiFPN 模型训练对比。
+
+**单个模型训练**：
+```bash
+# Baseline 训练（支持 n/s/m/l/x 尺度）
+python script/train_baseline.py --scale n
+python script/train_baseline.py --scale s
+
+# BiFPN 两阶段训练（支持 n/s/m/l/x 尺度）
+python script/train_bifpn.py --scale n
+python script/train_bifpn.py --scale s
+```
+
+**完整训练对比流程**：
+```bash
+# 一键运行：Baseline + BiFPN 训练 + 对比分析
+python script/train_and_compare.py --scale s
+```
+
+`train_and_compare.py` 自动完成：
+1. 训练 Baseline 模型（300 epochs）
+2. 训练 BiFPN 模型（阶段一 50 epochs + 阶段二 250 epochs）
+3. 整理结果到统一目录：`runs/detect/11vsbifpn_{scale}_300/`
+4. 生成对比曲线图（4 个指标：mAP@50-95、mAP@50、Precision、Recall）
+5. 生成对比摘要文本文件
+
+**输出目录结构**：
+```
+runs/detect/11vsbifpn_s_300/
+├── baseline_yolo11/              # Baseline 训练结果
+├── bifpn_stage1_warmup/          # BiFPN 阶段一结果
+├── bifpn_stage2_finetune/        # BiFPN 阶段二结果
+├── comparison_curves.png         # 对比曲线图
+└── comparison_summary.txt        # 对比摘要文本
+```
+
 ### Training Comparison Plot
 
 `script/plot_training_comparison.py` 提供了多模型训练结果对比可视化功能。
@@ -206,6 +244,13 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 - Configuration: `ultralytics/cfg/default.yaml`
 - Model architectures: `ultralytics/cfg/models/`
 - Test configuration: `pytest.ini`, `tests/conftest.py`
+
+**Training Scripts**：
+- Baseline training: `script/train_baseline.py`
+- BiFPN two-stage training: `script/train_bifpn.py`
+- Complete comparison workflow: `script/train_and_compare.py`
+- Results comparison: `script/compare_results.py`
+- Plotting: `script/plot_training_comparison.py`
 
 ## Testing Notes
 
