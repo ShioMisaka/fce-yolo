@@ -176,9 +176,20 @@ def train_model(
 
     # 根据配置选择训练模式
     if model_cfg.use_two_stage:
-        # 使用默认的两阶段配置
-        s1_config = config or get_stage1_config()
-        s2_config = config or get_stage2_config()
+        # 两阶段训练：总是从阶段特定配置开始
+        # 然后应用用户提供的自定义参数
+        s1_config = get_stage1_config()
+        s2_config = get_stage2_config()
+
+        # 如果用户提供了自定义配置，应用其中的非默认值
+        if config is not None:
+            default_config = TrainConfig()
+            for k, v in config.__dict__.items():
+                # 只应用与默认值不同的参数
+                default_value = getattr(default_config, k, None)
+                if default_value != v:
+                    setattr(s1_config, k, v)
+                    setattr(s2_config, k, v)
 
         # 合并额外参数
         for k, v in kwargs.items():

@@ -199,3 +199,6 @@ calibration_*.npy
 *.heic
 *.ico
 *.raw
+
+# Development logs (date folders)
+analysis_log/20??-??-??-*/

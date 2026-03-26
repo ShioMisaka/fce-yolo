@@ -227,13 +227,15 @@ def get_stage1_config() -> TrainConfig:
     - 冻结 backbone，只训练新增模块
     - 较高学习率快速适应
     - 较短的训练轮次
+
+    注意：这些参数是基于旧版本（commit f0929c）验证过的有效配置
     """
     return TrainConfig(
-        epochs=30,      # 减少到 30 epochs（冻结预热）
-        patience=15,
+        epochs=50,      # 50 epochs（与旧版本一致，充分预热）
+        patience=20,    # 20 epochs patience（与旧版本一致）
         lr0=0.01,      # 较高学习率
         cos_lr=False,  # 线性衰减
-        close_mosaic=5,  # 提前关闭 Mosaic
+        close_mosaic=10,  # 最后 10 epochs 关闭 Mosaic（与旧版本一致）
     )
 
 
