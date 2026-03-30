@@ -165,7 +165,125 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 - [-1, 1, BiCoordCrossAtt, [512, 16, 8]]  # oup=512, reduction=16, num_heads=8
 ```
 
-### 添加新模块
+## Training Scripts
+
+项目采用模块化训练架构，支持多种模型变体的训练和对比实验。
+
+### 训练架构
+
+训练脚本采用模块化设计，主要组件：
+
+- **`script/train.py`** - 统一的训练 CLI 接口
+- **`script/config.py`** - 配置管理（模型配置、训练配置）
+- **`script/trainer.py`** - 训练器实现（YOLOv11Trainer 类）
+- **`script/compare.py`** - 多模型训练对比脚本
+- **`script/test_two_stage_config.py`** - 两阶段训练配置测试
+
+### 支持的模型类型
+
+| 模型类型 | YAML 配置 | 两阶段训练 | 说明 |
+|---------|----------|-----------|------|
+| `baseline` | `yolo11.yaml` | 否 | 原生 YOLOv11 模型 |
+| `bifpn` | `yolo11-bifpn.yaml` | 是 | BiFPN 特征融合模型 |
+| `fce` | `yolo11-fce.yaml` | 是 | FCE 特征增强模型 |
+
+### 单模型训练
+
+```bash
+# Baseline 训练（支持 n/s/m/l/x 尺度）
+python script/train.py baseline --scale n
+
+# BiFPN 两阶段训练（自动执行阶段一 + 阶段二）
+python script/train.py bifpn --scale n
+
+# FCE 两阶段训练
+python script/train.py fce --scale s
+
+# 自定义训练参数
+python script/train.py fce --scale s --batch 16 --epochs 200
+
+# 快速测试（1 epoch，小图像尺寸）
+python script/train.py baseline --scale n --test
+```
+
+### 两阶段训练策略
+
+对于 BiFPN 和 FCE 等包含随机初始化模块的模型，采用两阶段训练：
+
+**阶段一（冻结预热）**：
+- 训练轮次：50 epochs
+- 冻结层数：前 10 层（backbone）
+- 学习率：0.01（较高）
+- 学习率调度：线性衰减（`cos_lr=False`）
+- Mosaic 关闭：最后 10 epochs
+- 早停耐心值：20 epochs
+
+**阶段二（全局微调）**：
+- 训练轮次：300 epochs
+- 冻结层数：无（全层训练）
+- 学习率：0.001（较低）
+- 学习率调度：余弦退火（`cos_lr=True`）
+- Mosaic 关闭：最后 20 epochs
+- 早停耐心值：50 epochs
+
+**总训练轮次：** 50 + 300 = 350 epochs
+
+### 多模型对比训练
+
+```bash
+# Baseline vs BiFPN 对比
+python script/compare.py --models baseline bifpn --scale s
+
+# Baseline vs BiFPN vs FCE 三模型对比
+python script/compare.py --models baseline bifpn fce --scale s
+
+# 仅对比已有结果（不训练）
+python script/compare.py --models baseline bifpn --scale s --skip-train
+
+# 自定义输出目录
+python script/compare.py --models baseline fce --scale s --output my_experiment
+```
+
+### 对比结果输出
+
+**输出目录结构**：
+```
+runs/detect/
+├── baselinevsbifpnvsfce_s_300/
+│   ├── baseline_yolo11s/         # Baseline 训练结果
+│   ├── bifpn_s_stage1/           # BiFPN 阶段一结果
+│   ├── bifpn_s_stage2/           # BiFPN 阶段二结果
+│   ├── fce_s_stage1/             # FCE 阶段一结果
+│   ├── fce_s_stage2/             # FCE 阶段二结果
+│   ├── comparison_curves.png     # 对比曲线图
+│   └── comparison_summary.txt    # 对比摘要文本
+```
+
+**对比曲线图**包含 4 个指标：
+- mAP@50-95
+- mAP@50
+- Precision
+- Recall
+
+### 训练配置测试
+
+验证两阶段训练配置是否正确：
+```bash
+python script/test_two_stage_config.py
+```
+
+预期输出：`✓ 所有测试通过！配置修复成功。`
+
+## Adding a New Task
+
+1. Create `ultralytics/models/yolo/mytask/` directory
+2. Implement: `train.py`, `val.py`, `predict.py`, `__init__.py`
+3. Add task to `TASKS` in `ultralytics/cfg/__init__.py`
+4. Update `task_map` in `ultralytics/models/yolo/model.py`
+
+## Adding a New Model Variant
+
+### 添加自定义模块
 
 > 详细流程请参考：`.claude/skills/add-module/SKILL.md`
 
@@ -177,64 +295,51 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 5. 在模型 YAML 中使用
 6. 更新文档
 
-## Training Visualization
+### 添加模型变体到训练脚本
 
-### Training Scripts
+如果要将自定义模型集成到训练脚本中：
 
-项目提供了完整的训练对比脚本，支持不同模型尺度的 Baseline 和 BiFPN 模型训练对比。
+1. **创建模型 YAML 配置**
+   - 在 `ultralytics/cfg/models/11/` 目录下创建新的 YAML 文件
+   - 定义 backbone 和 head 结构
+   - 添加自定义模块
 
-**单个模型训练**：
-```bash
-# Baseline 训练（支持 n/s/m/l/x 尺度）
-python script/train_baseline.py --scale n
-python script/train_baseline.py --scale s
+2. **更新模型配置**（`script/config.py`）
+   ```python
+   MODEL_CONFIGS: Dict[str, ModelConfig] = {
+       # ... 现有配置
+       "your_model": ModelConfig(
+           name="your_model",
+           yaml_path="ultralytics/cfg/models/11/yolo11-your-model.yaml",
+           color="#FF0000",  # 图表颜色
+           display_name=lambda s: f"YOLOv11{s.upper()} YourModel",
+           use_two_stage=True,  # 是否需要两阶段训练
+           result_pattern="your_model_{scale}_stage2",
+       ),
+   }
+   ```
 
-# BiFPN 两阶段训练（支持 n/s/m/l/x 尺度）
-python script/train_bifpn.py --scale n
-python script/train_bifpn.py --scale s
-```
+3. **确定是否需要两阶段训练**
+   - 如果模型包含随机初始化的模块（如 BiFPN、FCE），设置 `use_two_stage=True`
+   - 如果只是结构调整但所有层都使用预训练权重，设置 `use_two_stage=False`
 
-**完整训练对比流程**：
-```bash
-# 一键运行：Baseline + BiFPN 训练 + 对比分析
-python script/train_and_compare.py --scale s
-```
+4. **测试模型配置**
+   ```bash
+   # 快速测试
+   python script/train.py your_model --scale n --test
 
-`train_and_compare.py` 自动完成：
-1. 训练 Baseline 模型（300 epochs）
-2. 训练 BiFPN 模型（阶段一 50 epochs + 阶段二 250 epochs）
-3. 整理结果到统一目录：`runs/detect/11vsbifpn_{scale}_300/`
-4. 生成对比曲线图（4 个指标：mAP@50-95、mAP@50、Precision、Recall）
-5. 生成对比摘要文本文件
+   # 验证两阶段配置
+   python script/test_two_stage_config.py
+   ```
 
-**输出目录结构**：
-```
-runs/detect/11vsbifpn_s_300/
-├── baseline_yolo11/              # Baseline 训练结果
-├── bifpn_stage1_warmup/          # BiFPN 阶段一结果
-├── bifpn_stage2_finetune/        # BiFPN 阶段二结果
-├── comparison_curves.png         # 对比曲线图
-└── comparison_summary.txt        # 对比摘要文本
-```
-
-### Training Comparison Plot
-
-`script/plot_training_comparison.py` 提供了多模型训练结果对比可视化功能。
-
-## Adding a New Task
-
-1. Create `ultralytics/models/yolo/mytask/` directory
-2. Implement: `train.py`, `val.py`, `predict.py`, `__init__.py`
-3. Add task to `TASKS` in `ultralytics/cfg/__init__.py`
-4. Update `task_map` in `ultralytics/models/yolo/model.py`
-
-## Adding a New Model Variant
-
-1. Create model YAML in `ultralytics/cfg/models/`
-2. Implement custom trainer/validator/predictor if needed
-3. Create model class in `ultralytics/models/`
+5. **运行对比实验**
+   ```bash
+   python script/compare.py --models baseline your_model --scale s
+   ```
 
 ## Important File Locations
+
+### Core Files
 
 - CLI entry point: `ultralytics/cfg/__init__.py` -> `entrypoint()`
 - Model base class: `ultralytics/engine/model.py`
@@ -245,12 +350,31 @@ runs/detect/11vsbifpn_s_300/
 - Model architectures: `ultralytics/cfg/models/`
 - Test configuration: `pytest.ini`, `tests/conftest.py`
 
-**Training Scripts**：
-- Baseline training: `script/train_baseline.py`
-- BiFPN two-stage training: `script/train_bifpn.py`
-- Complete comparison workflow: `script/train_and_compare.py`
-- Results comparison: `script/compare_results.py`
-- Plotting: `script/plot_training_comparison.py`
+### Training Scripts (模块化架构)
+
+- **`script/train.py`** - 统一的训练 CLI 接口
+- **`script/config.py`** - 配置管理（模型配置、训练配置）
+  - `MODEL_CONFIGS` - 预定义模型配置（baseline, bifpn, fce）
+  - `get_stage1_config()` - 阶段一训练配置（冻结预热）
+  - `get_stage2_config()` - 阶段二训练配置（全局微调）
+- **`script/trainer.py`** - 训练器实现
+  - `YOLOv11Trainer` - YOLOv11 变体模型训练器
+  - `train_single_stage()` - 单阶段训练方法
+  - `train_two_stage()` - 两阶段训练方法
+- **`script/compare.py`** - 多模型训练对比脚本
+- **`script/test_two_stage_config.py`** - 两阶段训练配置测试脚本
+
+### Development Logs
+
+- **`analysis_log/`** - 开发分析日志目录
+  - `README.md` - 日志目录说明
+  - `20??-??-??-*/` - 日期格式的分析日志文件夹（已 gitignore）
+
+### 模型配置文件
+
+- **Baseline:** `ultralytics/cfg/models/11/yolo11.yaml`
+- **BiFPN:** `ultralytics/cfg/models/11/yolo11-bifpn.yaml`
+- **FCE:** `ultralytics/cfg/models/11/yolo11-fce.yaml`
 
 ## Testing Notes
 
