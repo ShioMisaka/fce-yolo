@@ -1634,32 +1634,76 @@ def parse_model(d, ch, verbose=True):
             c2 = make_divisible(min(c2, max_channels) * width, 8)  # 应用 width 缩放
             args = [c1, c2]  # 重新封装，这样 m(*args) 就等同于 BiFPN_Concat(c1, c2)
         elif m is CoordAtt:
-            # CoordAtt: inp, oup, reduction=32
+            # CoordAtt: inp, oup, reduction
+            # 使用自适应reduction避免过度压缩
             inp = ch[f]
             oup = args[0] if args else inp  # 如果yaml里没写参数，输出通道默认等于输入通道
             if args:  # 只有yaml明确指定了输出通道时才应用width缩放
                 oup = make_divisible(min(oup, max_channels) * width, 8)
-            reduction = args[1] if len(args) > 1 else 32
+
+            # 自适应reduction：根据输入通道数动态调整
+            if len(args) > 1:
+                reduction = args[1]
+            else:
+                # 默认reduction：取inp的平方根，确保在8-32之间
+                reduction = max(8, min(32, int(inp ** 0.5)))
+
             c2 = oup
             args = [inp, oup, reduction]
         elif m is CoordCrossAtt:
-            # CoordCrossAtt: inp, oup, reduction=32, num_heads=1
+            # CoordCrossAtt: inp, oup, reduction, num_heads
+            # 使用自适应策略确保每个注意力头至少有8个通道
             inp = ch[f]
             oup = args[0] if args else inp  # 如果yaml里没写参数，输出通道默认等于输入通道
             if args:  # 只有yaml明确指定了输出通道时才应用width缩放
                 oup = make_divisible(min(oup, max_channels) * width, 8)
-            reduction = args[1] if len(args) > 1 else 32
-            num_heads = args[2] if len(args) > 2 else 1
+
+            # 自适应reduction：根据输入通道数动态调整
+            if len(args) > 1:
+                reduction = args[1]
+            else:
+                reduction = max(8, min(32, int(inp ** 0.5)))
+
+            # 自适应num_heads：确保每个头至少有8个通道
+            if len(args) > 2:
+                num_heads = args[2]
+            else:
+                base_dim = max(8, inp // reduction)
+                num_heads = max(1, min(8, inp // 32))
+                # 如果每个头通道数不足8，减少头数
+                while num_heads > 1 and base_dim // num_heads < 8:
+                    num_heads -= 1
+
             c2 = oup
             args = [inp, oup, reduction, num_heads]
         elif m is BiCoordCrossAtt:
-            # BiCoordCrossAtt: inp, oup, reduction=32, num_heads=4
+            # BiCoordCrossAtt: inp, oup, reduction, num_heads
+            # 使用自适应策略确保每个注意力头至少有8个通道
             inp = ch[f]
             oup = args[0] if args else inp  # 如果yaml里没写参数，输出通道默认等于输入通道
             if args:  # 只有yaml明确指定了输出通道时才应用width缩放
                 oup = make_divisible(min(oup, max_channels) * width, 8)
-            reduction = args[1] if len(args) > 1 else 32
-            num_heads = args[2] if len(args) > 2 else 4
+
+            # 自适应reduction：根据输入通道数动态调整
+            # 确保中间维度不会太小，同时也不会太大
+            if len(args) > 1:
+                reduction = args[1]
+            else:
+                # 默认reduction：取inp的平方根，确保在8-32之间
+                reduction = max(8, min(32, int(inp ** 0.5)))
+
+            # 自适应num_heads：确保每个头至少有8个通道
+            if len(args) > 2:
+                num_heads = args[2]
+            else:
+                # 默认num_heads：根据输入通道数和reduction计算
+                # 确保每个头至少8个通道，最多8个头
+                base_dim = max(8, inp // reduction)
+                num_heads = max(1, min(8, inp // 32))  # 至少1个头，最多8个头
+                # 如果每个头通道数不足8，减少头数
+                while num_heads > 1 and base_dim // num_heads < 8:
+                    num_heads -= 1
+
             c2 = oup
             args = [inp, oup, reduction, num_heads]
         elif m in frozenset(
