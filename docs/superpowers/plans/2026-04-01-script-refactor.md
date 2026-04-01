@@ -371,12 +371,10 @@ def build_overrides_from_namespace(
         shared["data"] = args.data
 
     # 处理 boolean 标志（如 --no-amp）
-    no_flags = {"no_amp": "amp", "no_cos_lr": "cos_lr"}
+    no_flags = {"no_amp": "amp"}
     for flag, cfg_attr in no_flags.items():
         if getattr(args, flag, False):
             shared[cfg_attr] = False
-        elif flag in shared_keys.values():
-            pass  # 已在标准映射中处理
 
     stage2 = {}
     for arg_attr, cfg_attr in stage2_keys.items():
@@ -1054,11 +1052,7 @@ def main():
     else:
         config = get_dataset_preset(args.dataset)
 
-    # 自定义数据集路径覆盖
-    if args.data is not None:
-        config.data = args.data
-
-    # 应用 CLI override
+    # 应用 CLI override（包含 --data 处理）
     shared, stage2, stage1 = build_overrides(args)
     config = apply_overrides(config, model_cfg, shared, stage2, stage1)
 
@@ -1256,6 +1250,16 @@ def parse_args() -> argparse.Namespace:
                         help="训练设备")
     parser.add_argument("--workers", type=int, default=None,
                         help="数据加载工作进程数")
+    parser.add_argument("--patience", type=int, default=None,
+                        help="早停耐心值")
+    parser.add_argument("--lr0", type=float, default=None,
+                        help="stage2 初始学习率")
+    parser.add_argument("--cos-lr", action="store_true", default=None,
+                        help="stage2 余弦退火")
+    parser.add_argument("--no-cos-lr", action="store_true", default=False,
+                        help="stage2 禁用余弦退火")
+    parser.add_argument("--close-mosaic", type=int, default=None,
+                        help="stage2 最后 N epochs 关闭 Mosaic")
     parser.add_argument("--iou-type", type=str, default=None,
                         choices=["CIoU", "DIoU", "GIoU", "WIoU"],
                         help="IoU 损失类型")
@@ -1283,10 +1287,7 @@ def main():
     else:
         config = get_dataset_preset(args.dataset)
 
-    if args.data is not None:
-        config.data = args.data
-
-    # 构建 override
+    # 构建 override（包含 --data 处理）
     shared, stage2, stage1 = build_overrides_from_namespace(args)
 
     # 输出目录
@@ -1323,8 +1324,6 @@ def main():
                 get_dataset_preset(args.dataset) if not args.test else get_quick_test_config(),
                 model_cfg, shared, stage2, {},
             )
-            if args.data is not None:
-                model_config.data = args.data
 
             print(f"\n{'=' * 60}")
             print(f"训练: {model_cfg.get_display_name(scale)}")
