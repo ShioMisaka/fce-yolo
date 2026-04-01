@@ -127,6 +127,9 @@ class TrainConfig:
     save_period: int = 50
     exist_ok: bool = True
 
+    # IoU 损失类型
+    iou_type: str = "CIoU"
+
     # 其他
     deterministic: bool = False
     verbose: bool = True
@@ -160,6 +163,7 @@ class TrainConfig:
             "save": self.save,
             "save_period": self.save_period,
             "exist_ok": self.exist_ok,
+            "iou_type": self.iou_type,
             "deterministic": self.deterministic,
             "verbose": self.verbose,
             "plots": self.plots,

@@ -36,6 +36,9 @@ yolo checks
 # Quick test train
 yolo train model=yolo11n.pt data=coco8.yaml epochs=1 imgsz=32
 
+# Train with WIoU v3 loss (instead of default CIoU)
+yolo train model=yolo11n.pt data=coco8.yaml epochs=100 iou_type=WIoU
+
 # Validate model
 yolo val model=yolo11n.pt data=coco8.yaml
 
@@ -137,6 +140,28 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 - **Strategy Pattern**: Task-specific implementations
 - **Template Method**: Base classes with customizable hooks
 - **Composition**: Modular architecture with reusable components
+
+## Loss Function System
+
+检测任务支持可配置的 IoU 损失类型，通过 `default.yaml` 中的 `iou_type` 参数控制：
+
+| iou_type | 实现 | 说明 |
+|----------|------|------|
+| `CIoU` | `bbox_iou(CIoU=True)` | 默认，Complete IoU |
+| `DIoU` | `bbox_iou(DIoU=True)` | Distance IoU |
+| `GIoU` | `bbox_iou(GIoU=True)` | Generalized IoU |
+| `WIoU` | `bbox_wiou` + v3 聚焦 | Wise-IoU v3，动态非单调聚焦 |
+
+使用方式：`yolo train model=yolo11n.pt data=coco8.yaml iou_type=WIoU`
+
+**关键文件：**
+- `ultralytics/utils/metrics.py` — `bbox_iou`、`bbox_wiou`（IoU 计算函数）
+- `ultralytics/utils/loss.py` — `BboxLoss`（接收 `iou_type`，路由 IoU 计算）
+- `ultralytics/cfg/default.yaml` — `iou_type: CIoU` 配置项
+
+**配置传递链：** `default.yaml` → `model.args.iou_type` → `v8DetectionLoss.__init__` → `BboxLoss(iou_type=...)`
+
+**注意：** `BboxLoss` 被 `v8DetectionLoss`（及其子类 Segmentation/Pose）使用；`RotatedBboxLoss` 使用独立的 `probiou`，不受 `iou_type` 影响。
 
 ## Custom FCE Modules
 
@@ -346,6 +371,8 @@ python script/test_two_stage_config.py
 - YOLO model class: `ultralytics/models/yolo/model.py`
 - Neural network implementations: `ultralytics/nn/tasks.py`
 - Custom FCE modules: `ultralytics/nn/modules/fce_block.py`
+- IoU functions: `ultralytics/utils/metrics.py` (`bbox_iou`, `bbox_wiou`)
+- Loss functions: `ultralytics/utils/loss.py` (`BboxLoss`, `v8DetectionLoss`)
 - Configuration: `ultralytics/cfg/default.yaml`
 - Model architectures: `ultralytics/cfg/models/`
 - Test configuration: `pytest.ini`, `tests/conftest.py`

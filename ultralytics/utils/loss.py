@@ -13,7 +13,7 @@ from ultralytics.utils.ops import crop_mask, xywh2xyxy, xyxy2xywh
 from ultralytics.utils.tal import RotatedTaskAlignedAssigner, TaskAlignedAssigner, dist2bbox, dist2rbox, make_anchors
 from ultralytics.utils.torch_utils import autocast
 
-from .metrics import bbox_iou, probiou
+from .metrics import bbox_iou, bbox_wiou, probiou
 from .tal import bbox2dist
 
 
@@ -108,10 +108,63 @@ class DFLoss(nn.Module):
 class BboxLoss(nn.Module):
     """Criterion class for computing training losses for bounding boxes."""
 
-    def __init__(self, reg_max: int = 16):
-        """Initialize the BboxLoss module with regularization maximum and DFL settings."""
+    def __init__(self, reg_max: int = 16, iou_type: str = "CIoU"):
+        """Initialize the BboxLoss module with regularization maximum, DFL settings, and IoU type.
+
+        Args:
+            reg_max (int): Maximum regularization value for DFL.
+            iou_type (str): IoU loss type. Supported: 'CIoU', 'DIoU', 'GIoU', 'WIoU'.
+        """
         super().__init__()
         self.dfl_loss = DFLoss(reg_max) if reg_max > 1 else None
+        self.iou_type = iou_type
+
+    def _wiouv3_focusing(self, w_iou: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
+        """Apply WIoU v3 dynamic non-monotonic focusing mechanism.
+
+        Computes the outlier degree β = (L_i / mean(L))^δ for each sample, then applies
+        a non-monotonic focusing coefficient r = β / (δ * α^(β-δ)) that:
+        - Reduces gradient for very easy examples (β near 0)
+        - Increases gradient for moderate examples near the peak
+        - Decreases gradient for extreme outliers (β >> δ), avoiding domination by noisy labels
+
+        The running mean of IoU loss is tracked with momentum for stable outlier estimation.
+
+        Args:
+            w_iou (torch.Tensor): WIoU v1 metric values (higher is better).
+            eps (float): Small value to avoid division by zero.
+
+        Returns:
+            (torch.Tensor): Focusing coefficient r for each sample.
+        """
+        with torch.no_grad():
+            loss_iou = 1.0 - w_iou.detach()  # L_{WIoUv1} per sample
+            loss_iou = loss_iou.clamp(0, 4)  # guard against numerical anomalies
+
+            # Initialize running mean on first call
+            if not hasattr(self, "_wiou_loss_mean"):
+                self._wiou_loss_mean = loss_iou.mean().clamp(min=eps).item()
+
+            # Outlier degree: β = (L_i / mean(L))^δ
+            # The δ exponent widens the distribution, separating easy/hard/extreme more clearly
+            delta = 3.0
+            ratio = loss_iou / (self._wiou_loss_mean + eps)
+            beta = ratio.pow(delta)
+
+            # Dynamic non-monotonic focusing coefficient
+            # r = β / (δ * α^(β - δ)), with α = δ for natural normalization
+            # At β = δ: r = 1; peak at β ≈ 1/ln(δ)
+            alpha = delta
+            r = beta / (delta * torch.pow(alpha, beta - delta))
+            r = r.clamp(0.0, 4.0)  # prevent extreme values
+
+            # Update running mean with exponential moving average
+            momentum = 0.9
+            self._wiou_loss_mean = (
+                (1 - momentum) * self._wiou_loss_mean + momentum * loss_iou.mean().clamp(min=eps).item()
+            )
+
+        return r
 
     def forward(
         self,
@@ -125,8 +178,23 @@ class BboxLoss(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute IoU and DFL losses for bounding boxes."""
         weight = target_scores.sum(-1)[fg_mask].unsqueeze(-1)
-        iou = bbox_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask], xywh=False, CIoU=True)
-        loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+        pred_fg = pred_bboxes[fg_mask]
+        target_fg = target_bboxes[fg_mask]
+
+        if self.iou_type == "WIoU":
+            # WIoU v3: base metric + dynamic non-monotonic focusing mechanism
+            w_iou = bbox_wiou(pred_fg, target_fg, xywh=False)
+            r = self._wiouv3_focusing(w_iou)
+            loss_iou = (r * (1.0 - w_iou) * weight).sum() / target_scores_sum
+        elif self.iou_type == "DIoU":
+            iou = bbox_iou(pred_fg, target_fg, xywh=False, DIoU=True)
+            loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+        elif self.iou_type == "GIoU":
+            iou = bbox_iou(pred_fg, target_fg, xywh=False, GIoU=True)
+            loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
+        else:  # CIoU (default)
+            iou = bbox_iou(pred_fg, target_fg, xywh=False, CIoU=True)
+            loss_iou = ((1.0 - iou) * weight).sum() / target_scores_sum
 
         # DFL loss
         if self.dfl_loss:
@@ -211,7 +279,8 @@ class v8DetectionLoss:
         self.use_dfl = m.reg_max > 1
 
         self.assigner = TaskAlignedAssigner(topk=tal_topk, num_classes=self.nc, alpha=0.5, beta=6.0)
-        self.bbox_loss = BboxLoss(m.reg_max).to(device)
+        iou_type = getattr(h, "iou_type", "CIoU")
+        self.bbox_loss = BboxLoss(m.reg_max, iou_type=iou_type).to(device)
         self.proj = torch.arange(m.reg_max, dtype=torch.float, device=device)
 
     def preprocess(self, targets: torch.Tensor, batch_size: int, scale_tensor: torch.Tensor) -> torch.Tensor:

@@ -146,6 +146,79 @@ def bbox_iou(
     return iou  # IoU
 
 
+def bbox_wiou(
+    box1: torch.Tensor,
+    box2: torch.Tensor,
+    xywh: bool = True,
+    eps: float = 1e-7,
+) -> torch.Tensor:
+    """Calculate Wise-IoU (WIoU) v1 metric between bounding boxes.
+
+    Implements the distance-wise attention mechanism from WIoU v1. The WIoU v3
+    dynamic non-monotonic focusing mechanism is applied in BboxLoss when
+    iou_type='WIoU'.
+
+    Unlike DIoU's additive distance penalty (IoU - ρ²/C²), WIoU uses a
+    multiplicative attention weight: metric = 1 - exp(ρ²/(Cw²+Ch²)) * (1-IoU).
+    This proportionally amplifies the loss for distant boxes while preserving
+    the IoU-based ranking.
+
+    Args:
+        box1 (torch.Tensor): A tensor representing bounding boxes in (x, y, w, h) or (x1, y1, x2, y2) format.
+        box2 (torch.Tensor): A tensor representing bounding boxes in (x, y, w, h) or (x1, y1, x2, y2) format.
+        xywh (bool): If True, input boxes are in (x, y, w, h) format. If False, (x1, y1, x2, y2).
+        eps (float): Small value to avoid division by zero.
+
+    Returns:
+        (torch.Tensor): WIoU v1 metric values. Use (1 - WIoU) as the loss.
+
+    References:
+        Wise-IoU: Bounding Box Regression Loss with Dynamic Focusing Mechanism
+        https://arxiv.org/abs/2301.10051
+    """
+    # Get the coordinates of bounding boxes
+    if xywh:  # transform from xywh to xyxy
+        (x1, y1, w1, h1), (x2, y2, w2, h2) = box1.chunk(4, -1), box2.chunk(4, -1)
+        w1_, h1_, w2_, h2_ = w1 / 2, h1 / 2, w2 / 2, h2 / 2
+        b1_x1, b1_x2, b1_y1, b1_y2 = x1 - w1_, x1 + w1_, y1 - h1_, y1 + h1_
+        b2_x1, b2_x2, b2_y1, b2_y2 = x2 - w2_, x2 + w2_, y2 - h2_, y2 + h2_
+    else:  # x1, y1, x2, y2 = box1
+        b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, -1)
+        b2_x1, b2_y1, b2_x2, b2_y2 = box2.chunk(4, -1)
+        w1, h1 = (b1_x2 - b1_x1).clamp_(eps), (b1_y2 - b1_y1).clamp_(eps)
+        w2, h2 = (b2_x2 - b2_x1).clamp_(eps), (b2_y2 - b2_y1).clamp_(eps)
+
+    # Intersection area
+    inter = (b1_x2.minimum(b2_x2) - b1_x1.maximum(b2_x1)).clamp_(0) * (
+        b1_y2.minimum(b2_y2) - b1_y1.maximum(b2_y1)
+    ).clamp_(0)
+
+    # Union Area
+    union = w1 * h1 + w2 * h2 - inter + eps
+
+    # IoU
+    iou = inter / union
+
+    # Smallest enclosing box dimensions
+    cw = b1_x2.maximum(b2_x2) - b1_x1.minimum(b2_x1)
+    ch = b1_y2.maximum(b2_y2) - b1_y1.minimum(b2_y1)
+
+    # Center point distance squared (same convention as DIoU in bbox_iou)
+    rho2 = (
+        (b2_x1 + b2_x2 - b1_x1 - b1_x2).pow(2) + (b2_y1 + b2_y2 - b1_y1 - b1_y2).pow(2)
+    ) / 4  # center distance squared
+
+    # WIoU v1 distance-wise attention
+    # Note: ρ²/(Cw²+Ch²) ≤ 1 since center distance ≤ enclosing box diagonal,
+    # so exp(ρ²/(Cw²+Ch²)) ∈ [1, ~2.72], numerically safe.
+    c2 = cw.pow(2) + ch.pow(2) + eps
+    wiou_attn = torch.exp(rho2 / c2)
+
+    # WIoU v1 metric: 1 - R * (1 - IoU)
+    # Loss = (1 - metric) = R * (1 - IoU) = exp(ρ²/(Cw²+Ch²)) * (1 - IoU)
+    return 1.0 - wiou_attn * (1.0 - iou)
+
+
 def mask_iou(mask1: torch.Tensor, mask2: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
     """Calculate masks IoU.
 
