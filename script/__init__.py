@@ -7,12 +7,20 @@ YOLOv11 训练对比工具包
 __version__ = "1.0.0"
 __author__ = "FCE-YOLOv11 Team"
 
-from .config import MODEL_CONFIGS, TrainConfig, ExperimentConfig
+from .config import (
+    MODEL_CONFIGS,
+    DATASET_PRESETS,
+    ModelConfig,
+    StageConfig,
+    TrainConfig,
+)
 from .trainer import YOLOv11Trainer
 
 __all__ = [
     "MODEL_CONFIGS",
+    "DATASET_PRESETS",
+    "ModelConfig",
+    "StageConfig",
     "TrainConfig",
-    "ExperimentConfig",
     "YOLOv11Trainer",
 ]
