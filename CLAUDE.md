@@ -194,110 +194,102 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 
 项目采用模块化训练架构，支持多种模型变体的训练和对比实验。
 
-### 训练架构
+### 架构概览
 
-训练脚本采用模块化设计，主要组件：
+- **`script/config.py`** - 配置系统（StageConfig, TrainConfig, ModelConfig, 数据集预设）
+- **`script/trainer.py`** - 训练器（YOLOv11Trainer 类）
+- **`script/analysis.py`** - 对比分析（指标提取、曲线绘制、结果对比）
+- **`script/train.py`** - 统一训练 CLI
+- **`script/compare.py`** - 统一对比 CLI
+- **`script/test.py`** - 配置测试脚本
 
-- **`script/train.py`** - 统一的训练 CLI 接口
-- **`script/config.py`** - 配置管理（模型配置、训练配置）
-- **`script/trainer.py`** - 训练器实现（YOLOv11Trainer 类）
-- **`script/compare.py`** - 多模型训练对比脚本
-- **`script/test_two_stage_config.py`** - 两阶段训练配置测试
+### 配置系统
+
+参数分为三类：
+
+| 参数类别 | CLI 示例 | 影响范围 |
+|---------|---------|---------|
+| 共享参数 | `--batch`, `--imgsz`, `--device`, `--workers`, `--iou-type` | 所有阶段 |
+| 阶段参数 | `--epochs`, `--lr0`, `--patience` | 仅 stage2 |
+| stage1 覆盖 | `--stage1-epochs`, `--stage1-lr0` | 仅 stage1 |
+
+数据集预设：`--dataset default/coco/coco_hq`，自定义路径：`--data /path/to/data.yaml`
 
 ### 支持的模型类型
 
 | 模型类型 | YAML 配置 | 两阶段训练 | 说明 |
 |---------|----------|-----------|------|
 | `baseline` | `yolo11.yaml` | 否 | 原生 YOLOv11 模型 |
-| `bifpn` | `yolo11-bifpn.yaml` | 是 | BiFPN 特征融合模型 |
-| `fce` | `yolo11-fce.yaml` | 是 | FCE 特征增强模型 |
+| `bifpn` | `yolo11-bifpn.yaml` | 是 (50+300) | BiFPN 特征融合模型 |
+| `fce` | `yolo11-fce.yaml` | 是 (50+300) | FCE 特征增强模型 |
 
 ### 单模型训练
 
 ```bash
-# Baseline 训练（支持 n/s/m/l/x 尺度）
+# Baseline 训练（单阶段 300 epochs）
 python script/train.py baseline --scale n
 
-# BiFPN 两阶段训练（自动执行阶段一 + 阶段二）
-python script/train.py bifpn --scale n
-
-# FCE 两阶段训练
+# FCE 两阶段训练（自动 50+300 epochs）
 python script/train.py fce --scale s
 
-# 自定义训练参数
-python script/train.py fce --scale s --batch 16 --epochs 200
+# 覆盖共享参数
+python script/train.py fce --scale s --batch 16 --imgsz 640
+
+# 覆盖 stage2 轮次（fce: 50+200, baseline: 200）
+python script/train.py fce --scale s --epochs 200
+
+# 切换数据集预设
+python script/train.py fce --scale s --dataset coco
+python script/train.py fce --scale s --dataset coco_hq
+
+# 自定义数据集路径
+python script/train.py fce --scale s --data /path/to/data.yaml
 
 # 快速测试（1 epoch，小图像尺寸）
-python script/train.py baseline --scale n --test
+python script/train.py fce --scale s --test
 ```
-
-### 两阶段训练策略
-
-对于 BiFPN 和 FCE 等包含随机初始化模块的模型，采用两阶段训练：
-
-**阶段一（冻结预热）**：
-- 训练轮次：50 epochs
-- 冻结层数：前 10 层（backbone）
-- 学习率：0.01（较高）
-- 学习率调度：线性衰减（`cos_lr=False`）
-- Mosaic 关闭：最后 10 epochs
-- 早停耐心值：20 epochs
-
-**阶段二（全局微调）**：
-- 训练轮次：300 epochs
-- 冻结层数：无（全层训练）
-- 学习率：0.001（较低）
-- 学习率调度：余弦退火（`cos_lr=True`）
-- Mosaic 关闭：最后 20 epochs
-- 早停耐心值：50 epochs
-
-**总训练轮次：** 50 + 300 = 350 epochs
 
 ### 多模型对比训练
 
 ```bash
-# Baseline vs BiFPN 对比
-python script/compare.py --models baseline bifpn --scale s
+# Baseline vs FCE 对比
+python script/compare.py --models baseline fce --scale s
 
-# Baseline vs BiFPN vs FCE 三模型对比
+# 三模型对比
 python script/compare.py --models baseline bifpn fce --scale s
 
-# 仅对比已有结果（不训练）
+# 覆盖 epochs
+python script/compare.py --models baseline fce --scale s --epochs 200
+
+# 跳过训练，仅对比已有结果
 python script/compare.py --models baseline bifpn --scale s --skip-train
 
-# 自定义输出目录
-python script/compare.py --models baseline fce --scale s --output my_experiment
+# 切换 IoU 损失
+python script/compare.py --models baseline bifpn fce --scale s --iou-type WIoU
+
+# 切换数据集
+python script/compare.py --models baseline fce --scale s --dataset coco_hq
 ```
 
 ### 对比结果输出
 
-**输出目录结构**：
 ```
 runs/detect/
-├── baselinevsbifpnvsfce_s_300/
+├── baselinevsfce_s_300/
 │   ├── baseline_yolo11s/         # Baseline 训练结果
-│   ├── bifpn_s_stage1/           # BiFPN 阶段一结果
-│   ├── bifpn_s_stage2/           # BiFPN 阶段二结果
 │   ├── fce_s_stage1/             # FCE 阶段一结果
 │   ├── fce_s_stage2/             # FCE 阶段二结果
-│   ├── comparison_curves.png     # 对比曲线图
+│   ├── comparison_curves.png     # 对比曲线图（mAP@50-95, mAP@50, Precision, Recall）
 │   └── comparison_summary.txt    # 对比摘要文本
 ```
 
-**对比曲线图**包含 4 个指标：
-- mAP@50-95
-- mAP@50
-- Precision
-- Recall
+### 配置测试
 
-### 训练配置测试
-
-验证两阶段训练配置是否正确：
 ```bash
-python script/test_two_stage_config.py
+python script/test.py
 ```
 
-预期输出：`✓ 所有测试通过！配置修复成功。`
+预期输出：`✓ 所有测试通过!`
 
 ## Adding a New Task
 
@@ -338,23 +330,27 @@ python script/test_two_stage_config.py
            yaml_path="ultralytics/cfg/models/11/yolo11-your-model.yaml",
            color="#FF0000",  # 图表颜色
            display_name=lambda s: f"YOLOv11{s.upper()} YourModel",
-           use_two_stage=True,  # 是否需要两阶段训练
+           freeze=10,  # stage1 冻结层数
+           stage1=StageConfig(epochs=50, patience=20, lr0=0.01,
+                              cos_lr=False, close_mosaic=10),
+           stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
+                              cos_lr=True, close_mosaic=20),
            result_pattern="your_model_{scale}_stage2",
        ),
    }
    ```
 
 3. **确定是否需要两阶段训练**
-   - 如果模型包含随机初始化的模块（如 BiFPN、FCE），设置 `use_two_stage=True`
-   - 如果只是结构调整但所有层都使用预训练权重，设置 `use_two_stage=False`
+   - 如果模型包含随机初始化的模块（如 BiFPN、FCE），设置 `stage1=StageConfig(...)`
+   - 如果只是结构调整但所有层都使用预训练权重，不设置 `stage1`（默认为 None，即单阶段）
 
 4. **测试模型配置**
    ```bash
    # 快速测试
    python script/train.py your_model --scale n --test
 
-   # 验证两阶段配置
-   python script/test_two_stage_config.py
+   # 运行配置测试
+   python script/test.py
    ```
 
 5. **运行对比实验**
@@ -379,17 +375,21 @@ python script/test_two_stage_config.py
 
 ### Training Scripts (模块化架构)
 
-- **`script/train.py`** - 统一的训练 CLI 接口
-- **`script/config.py`** - 配置管理（模型配置、训练配置）
+- **`script/config.py`** - 配置系统
+  - `StageConfig`, `TrainConfig`, `ModelConfig` - 配置数据类
   - `MODEL_CONFIGS` - 预定义模型配置（baseline, bifpn, fce）
-  - `get_stage1_config()` - 阶段一训练配置（冻结预热）
-  - `get_stage2_config()` - 阶段二训练配置（全局微调）
-- **`script/trainer.py`** - 训练器实现
-  - `YOLOv11Trainer` - YOLOv11 变体模型训练器
-  - `train_single_stage()` - 单阶段训练方法
-  - `train_two_stage()` - 两阶段训练方法
-- **`script/compare.py`** - 多模型训练对比脚本
-- **`script/test_two_stage_config.py`** - 两阶段训练配置测试脚本
+  - `DATASET_PRESETS` - 数据集预设（default, coco, coco_hq）
+  - `apply_overrides()` - 配置覆盖逻辑
+  - `build_overrides_from_namespace()` - argparse 参数转换
+- **`script/trainer.py`** - 训练器
+  - `YOLOv11Trainer` - YOLOv11 变体模型训练器（自动单阶段/两阶段）
+- **`script/analysis.py`** - 对比分析（无状态纯函数）
+  - `load_results()`, `extract_metrics()` - 指标提取
+  - `print_comparison_table()`, `plot_comparison_curves()` - 对比展示
+  - `reorganize_results()` - 结果整理
+- **`script/train.py`** - 统一训练 CLI
+- **`script/compare.py`** - 统一对比 CLI
+- **`script/test.py`** - 配置测试脚本
 
 ### Development Logs
 
