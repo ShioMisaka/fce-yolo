@@ -137,6 +137,43 @@ python script/compare.py --models baseline fce --scale s --skip-train
 python script/compare.py --models baseline fce --scale s --iou-type WIoU
 ```
 
+## analysis 模块
+
+`script/analysis.py` 提供无状态纯函数，可直接在 Python 中使用，适合自定义对比分析：
+
+```python
+from script.analysis import (
+    load_results, extract_metrics,
+    print_comparison_table, plot_comparison_curves,
+    save_comparison_summary,
+)
+from pathlib import Path
+
+# 加载两个 CSV 结果
+csv1 = Path("runs/detect/fce_s_stage2/results.csv")
+csv2 = Path("runs/detect/fce_s_wiou_stage2/results.csv")
+df1, df2 = load_results(csv1), load_results(csv2)
+
+# 提取指标
+metrics = {
+    "FCE CIoU": extract_metrics(df1),
+    "FCE WIoU": extract_metrics(df2),
+}
+
+# 打印对比表格
+print_comparison_table(metrics, title="CIoU vs WIoU")
+
+# 绘制对比曲线
+plot_comparison_curves(
+    dataframes={"FCE CIoU": df1, "FCE WIoU": df2},
+    names={"FCE CIoU": "FCE CIoU", "FCE WIoU": "FCE WIoU"},
+    colors={"FCE CIoU": "#FF6B00", "FCE WIoU": "#0BDBEB"},
+    save_path=Path("comparison.png"),
+)
+```
+
+也可用于 compare.py 不覆盖的场景（如同模型不同 IoU 的对比）。
+
 ## 添加新模型
 
 1. 在 `ultralytics/cfg/models/11/` 创建 YAML
