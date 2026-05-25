@@ -6,9 +6,10 @@
 
 ```python
 class BiFPN_Concat(nn.Module):
-    """Learnable weighted feature fusion and bidirectional cross-scale connectivity Concat"""
+    """Learnable weighted feature fusion and bidirectional cross-scale connectivity Concat."""
+
     def __init__(self, c1, c2=None):
-        super(BiFPN_Concat, self).__init__()
+        super().__init__()
         self.output_ch = c2 if c2 else max(c1)
         self.realign_convs = nn.ModuleList()
         for ch in c1:
@@ -35,11 +36,11 @@ class BiFPN_Concat(nn.Module):
 
 ```python
 class CoordAtt(nn.Module):
-    """Coordinate Attention 模块 (标准版)
+    """Coordinate Attention 模块 (标准版).
 
-    通过分别捕获水平和垂直方向的空间依赖关系来增强特征表达。
-    参考: https://arxiv.org/abs/2103.02907
+    通过分别捕获水平和垂直方向的空间依赖关系来增强特征表达。 参考: https://arxiv.org/abs/2103.02907
     """
+
     def __init__(self, inp: int, oup: int, reduction: int = 32):
         super().__init__()
         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
@@ -51,7 +52,7 @@ class CoordAtt(nn.Module):
         self.identity = nn.Conv2d(inp, oup, 1) if inp != oup else nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        n, c, h, w = x.size()
+        _n, _c, h, w = x.size()
         x_h = self.pool_h(x)
         x_w = self.pool_w(x).permute(0, 1, 3, 2)
         y = self.cv1(torch.cat([x_h, x_w], dim=2))
@@ -66,12 +67,12 @@ class CoordAtt(nn.Module):
 
 ```python
 class CoordCrossAtt(nn.Module):
-    """Coordinate Cross Attention 模块
+    """Coordinate Cross Attention 模块.
 
-    在 CoordAtt 基础上引入 Cross-Attention 机制，让水平和垂直特征之间
-    进行更深入的交互。
+    在 CoordAtt 基础上引入 Cross-Attention 机制，让水平和垂直特征之间 进行更深入的交互。
     """
-    def __init__(self, inp: int, oup: int, reduction: int = 32, num_heads = 1):
+
+    def __init__(self, inp: int, oup: int, reduction: int = 32, num_heads=1):
         super().__init__()
         self.mip = max(8, inp // reduction)
         self.num_heads = num_heads
@@ -86,7 +87,7 @@ class CoordCrossAtt(nn.Module):
         self.gate = nn.Sigmoid()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        n, c, h, w = x.size()
+        n, _c, h, w = x.size()
         x_h = self.pool_h(x)
         x_w = self.pool_w(x).permute(0, 1, 3, 2)
         y = self.cv1(torch.cat([x_h, x_w], dim=2))
@@ -105,18 +106,19 @@ class CoordCrossAtt(nn.Module):
 
 ```python
 class BiCoordCrossAtt(nn.Module):
-    """Bidirectional Coordinate Cross Attention
+    """Bidirectional Coordinate Cross Attention.
 
     特点：
     1. 对称结构：同时计算 H->W 和 W->H 的注意力
     2. 效率优化：直接对池化后的特征进行投影
     """
+
     def __init__(self, inp: int, oup: int, reduction: int = 32, num_heads: int = 4):
         super().__init__()
         self.num_heads = num_heads
         self.dim_head = max(8, inp // reduction) // num_heads
         self.mid_dim = self.dim_head * num_heads
-        self.scale = self.dim_head ** -0.5
+        self.scale = self.dim_head**-0.5
         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
         self.pool_w = nn.AdaptiveAvgPool2d((1, None))
         # Branch H
@@ -133,7 +135,7 @@ class BiCoordCrossAtt(nn.Module):
         self.identity = nn.Conv2d(inp, oup, 1) if inp != oup else nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        n, c, h, w = x.size()
+        n, _c, h, w = x.size()
         x_h = self.pool_h(x)
         x_w = self.pool_w(x)
         # Branch H
@@ -159,7 +161,7 @@ class BiCoordCrossAtt(nn.Module):
 
 ```python
 class YourModule(nn.Module):
-    """模块描述
+    """模块描述.
 
     Args:
         inp: 输入通道数
@@ -167,6 +169,7 @@ class YourModule(nn.Module):
         param1: 参数1说明
         param2: 参数2说明
     """
+
     def __init__(self, inp: int, oup: int, param1: int = default1, param2: int = default2):
         super().__init__()
         # 模块实现
