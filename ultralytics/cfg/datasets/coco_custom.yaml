@@ -3,12 +3,12 @@
 # Optimized for RTX 5090 with 128GB RAM
 
 # Dataset root directory
-path: /mnt/ssd1/Dataset/coco2017  # dataset root dir
+path: /mnt/ssd1/Dataset/coco2017 # dataset root dir
 
 # Train/val/test splits (relative to 'path')
-train: images/train2017  # train images (relative to 'path')
-val: images/val2017      # val images (relative to 'path')
-test: images/test2017    # test images (optional)
+train: images/train2017 # train images (relative to 'path')
+val: images/val2017 # val images (relative to 'path')
+test: images/test2017 # test images (optional)
 
 # Classes
 names:
@@ -92,7 +92,6 @@ names:
   77: teddy bear
   78: hair drier
   79: toothbrush
-
 # Download script (optional, for reference)
 # download: |
 #   from ultralytics.utils.downloads import download
