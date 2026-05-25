@@ -18,6 +18,7 @@ analysis_log/
 使用日期命名格式：`YYYY-MM-DD-描述/`
 
 例如：
+
 - `2026-03-26-training-fix/` - 训练脚本修复
 - `2026-03-27-module-analysis/` - 模块分析
 - `2026-03-28-bug-investigation/` - Bug 调查
@@ -25,6 +26,7 @@ analysis_log/
 ## Git 设置
 
 本目录下的日期文件夹已添加到 `.gitignore`：
+
 ```gitignore
 analysis_log/20??-??-??-*/
 ```
@@ -34,6 +36,7 @@ analysis_log/20??-??-??-*/
 ## 创建新日志
 
 1. 在 `analysis_log/` 下创建新文件夹：
+
    ```bash
    mkdir analysis_log/2026-03-27-your-topic
    ```

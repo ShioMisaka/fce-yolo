@@ -10,6 +10,7 @@ description: 向 FCE-YOLOv11 项目添加新的神经网络模块。当用户请
 ## 快速开始
 
 核心文件位置：
+
 - 模块实现：`ultralytics/nn/modules/fce_block.py`
 - 参数解析：`ultralytics/nn/tasks.py` 的 `parse_model()` 方法
 - 模型配置：`ultralytics/cfg/models/11/*.yaml`
@@ -33,6 +34,7 @@ class YourModule(nn.Module):
 ```
 
 **要求**：
+
 - 继承 `nn.Module`
 - 类型注解参数和返回值
 - Google 风格 docstring（描述 + Args + Returns）
@@ -44,10 +46,7 @@ class YourModule(nn.Module):
 在 `ultralytics/nn/tasks.py` 顶部添加导入：
 
 ```python
-from ultralytics.nn.modules import (
-    # ... 其他模块 ...
-    YourModule,
-)
+
 ```
 
 ### 3. 配置参数解析
@@ -55,6 +54,7 @@ from ultralytics.nn.modules import (
 在 `ultralytics/nn/tasks.py` 的 `parse_model()` 方法中添加解析逻辑（约 1635-1665 行）。
 
 **必须遵循的模式**：
+
 - `ch[f]` 获取上一层输出通道数
 - `c2` 设置为输出通道数（用于下一层输入）
 - `args` 构造为完整参数列表传递给模块
@@ -71,6 +71,7 @@ from ultralytics.nn.modules import (
 ### 5. 更新文档
 
 更新以下位置（保持格式一致）：
+
 - `README.md` 的模块表格
 - `CLAUDE.md` 的模块说明
 
