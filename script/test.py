@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-测试工具脚本
+测试工具脚本.
 
 验证配置一致性、覆盖逻辑等。
 """
@@ -15,22 +15,22 @@ sys.path.insert(0, str(project_root))
 from script.config import (
     MODEL_CONFIGS,
     TrainConfig,
-    StageConfig,
-    get_model_config,
-    get_dataset_preset,
-    get_quick_test_config,
     apply_overrides,
+    get_dataset_preset,
+    get_model_config,
+    get_quick_test_config,
 )
 
 
 def test_imports():
-    """测试模块导入"""
+    """测试模块导入."""
     print("=" * 80)
     print("测试 1: 模块导入")
     print("=" * 80)
 
     try:
-        from script.config import MODEL_CONFIGS, TrainConfig, StageConfig, ModelConfig
+        from script.config import MODEL_CONFIGS, ModelConfig, StageConfig, TrainConfig
+
         print("  ✓ script.config 导入成功")
     except ImportError as e:
         print(f"  ✗ script.config 导入失败: {e}")
@@ -38,6 +38,7 @@ def test_imports():
 
     try:
         from script.trainer import YOLOv11Trainer
+
         print("  ✓ script.trainer 导入成功")
     except ImportError as e:
         print(f"  ✗ script.trainer 导入失败: {e}")
@@ -45,10 +46,14 @@ def test_imports():
 
     try:
         from script.analysis import (
-            load_results, extract_metrics,
-            print_comparison_table, plot_comparison_curves,
-            save_comparison_summary, reorganize_results,
+            extract_metrics,
+            load_results,
+            plot_comparison_curves,
+            print_comparison_table,
+            reorganize_results,
+            save_comparison_summary,
         )
+
         print("  ✓ script.analysis 导入成功")
     except ImportError as e:
         print(f"  ✗ script.analysis 导入失败: {e}")
@@ -58,7 +63,7 @@ def test_imports():
 
 
 def test_model_configs():
-    """测试模型配置"""
+    """测试模型配置."""
     print("\n" + "=" * 80)
     print("测试 2: 模型配置")
     print("=" * 80)
@@ -80,7 +85,7 @@ def test_model_configs():
 
 
 def test_dataset_presets():
-    """测试数据集预设"""
+    """测试数据集预设."""
     print("\n" + "=" * 80)
     print("测试 3: 数据集预设")
     print("=" * 80)
@@ -93,7 +98,7 @@ def test_dataset_presets():
 
 
 def test_override_logic():
-    """测试配置覆盖逻辑"""
+    """测试配置覆盖逻辑."""
     print("\n" + "=" * 80)
     print("测试 4: 配置覆盖逻辑")
     print("=" * 80)
@@ -158,7 +163,7 @@ def test_override_logic():
 
 
 def test_quick_test_config():
-    """测试快速测试配置"""
+    """测试快速测试配置."""
     print("\n" + "=" * 80)
     print("测试 5: 快速测试配置")
     print("=" * 80)
@@ -174,7 +179,7 @@ def test_quick_test_config():
 
 
 def test_train_config_to_dict():
-    """测试 TrainConfig.to_dict()"""
+    """测试 TrainConfig.to_dict()."""
     print("\n" + "=" * 80)
     print("测试 6: TrainConfig.to_dict()")
     print("=" * 80)
@@ -191,7 +196,7 @@ def test_train_config_to_dict():
 
 
 def main():
-    """主函数"""
+    """主函数."""
     print("\n" + "=" * 80)
     print("Script 模块测试")
     print("=" * 80)
