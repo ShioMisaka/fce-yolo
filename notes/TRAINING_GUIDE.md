@@ -74,21 +74,21 @@ python script/compare.py --models baseline bifpn --scale s --skip-train
 
 针对 RTX 5090 + 128GB RAM 的优化参数：
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--batch` | 128 (coco_hq) | 批次大小 |
-| `--cache` | ram (coco_hq) | 数据缓存：ram/disk/false |
-| `--workers` | 24 (coco_hq) | 数据加载进程数 |
-| `--amp` | True | 自动混合精度训练 |
-| `--imgsz` | 640 | 输入图像尺寸 |
+| 参数        | 默认值        | 说明                     |
+| ----------- | ------------- | ------------------------ |
+| `--batch`   | 128 (coco_hq) | 批次大小                 |
+| `--cache`   | ram (coco_hq) | 数据缓存：ram/disk/false |
+| `--workers` | 24 (coco_hq)  | 数据加载进程数           |
+| `--amp`     | True          | 自动混合精度训练         |
+| `--imgsz`   | 640           | 输入图像尺寸             |
 
 ### 数据集预设
 
-| 预设 | imgsz | batch | workers | cache |
-|------|-------|-------|---------|-------|
-| `default` | 1280 | 32 | 16 | ram |
-| `coco` | 640 | 16 | 8 | false |
-| `coco_hq` | 640 | 128 | 24 | ram |
+| 预设      | imgsz | batch | workers | cache |
+| --------- | ----- | ----- | ------- | ----- |
+| `default` | 1280  | 32    | 16      | ram   |
+| `coco`    | 640   | 16    | 8       | false |
+| `coco_hq` | 640   | 128   | 24      | ram   |
 
 ### 示例命令
 
@@ -114,11 +114,11 @@ python script/train.py fce --scale s --test
 
 ### 参数分类
 
-| 参数类别 | CLI 示例 | 影响范围 |
-|---------|---------|---------|
-| 共享参数 | `--batch`, `--imgsz`, `--device`, `--workers`, `--iou-type` | 所有阶段 |
-| 阶段参数 | `--epochs`, `--lr0`, `--patience` | 仅 stage2 |
-| stage1 覆盖 | `--stage1-epochs`, `--stage1-lr0` | 仅 stage1 |
+| 参数类别    | CLI 示例                                                    | 影响范围  |
+| ----------- | ----------------------------------------------------------- | --------- |
+| 共享参数    | `--batch`, `--imgsz`, `--device`, `--workers`, `--iou-type` | 所有阶段  |
+| 阶段参数    | `--epochs`, `--lr0`, `--patience`                           | 仅 stage2 |
+| stage1 覆盖 | `--stage1-epochs`, `--stage1-lr0`                           | 仅 stage1 |
 
 ## 训练监控
 
@@ -148,16 +148,19 @@ runs/detect/<name>/
 ## 硬件优化说明
 
 ### RAM 缓存（`--cache ram`）
+
 - **优点**：彻底消除 SSD IO 瓶颈，训练速度提升 2-3x
 - **要求**：128GB RAM 可完全缓存 COCO 数据集（~120GB）
 - **显存占用**：约 100-110GB
 
 ### Worker 进程（`--workers 24`）
+
 - **推荐值**：CPU 核心数的 1.5x
 - **9950X3D**：16 核心 → 推荐使用 24 workers
 - **作用**：数据预取和增强，避免 GPU 等待数据
 
 ### 批次大小（`--batch`）
+
 - **RTX 5090 32GB**：
   - YOLOv11n (640): 推荐批次 128+
   - YOLOv11s (640): 推荐批次 96
@@ -169,41 +172,44 @@ runs/detect/<name>/
 
 基于 RTX 5090 的估算（imgsz=640, cache=ram）：
 
-| 模型 | 1 epoch 时间 | 300 epoch 总时间 |
-|------|-------------|-----------------|
-| YOLOv11n | ~30 分钟 | ~150 小时 |
-| YOLOv11s | ~45 分钟 | ~225 小时 |
-| YOLOv11m | ~60 分钟 | ~300 小时 |
-| YOLOv11l | ~90 分钟 | ~450 小时 |
-| YOLOv11x | ~120 分钟 | ~600 小时 |
+| 模型     | 1 epoch 时间 | 300 epoch 总时间 |
+| -------- | ------------ | ---------------- |
+| YOLOv11n | ~30 分钟     | ~150 小时        |
+| YOLOv11s | ~45 分钟     | ~225 小时        |
+| YOLOv11m | ~60 分钟     | ~300 小时        |
+| YOLOv11l | ~90 分钟     | ~450 小时        |
+| YOLOv11x | ~120 分钟    | ~600 小时        |
 
 ## 性能基准
 
 参考预期结果（COCO val2017）：
 
-| 模型 | mAP50-95 | mAP50 | 参数量 | FLOPs |
-|------|----------|-------|--------|-------|
-| YOLOv11n | ~39% | ~53% | 2.6M | 6.1B |
-| YOLOv11s | ~47% | ~62% | 9.4M | 21.4B |
-| YOLOv11m | ~51% | ~66% | 20.9M | 48.6B |
-| YOLOv11l | ~53% | ~68% | 26.5M | 60.9B |
-| YOLOv11x | ~55% | ~70% | 58.8M | 135.4B |
+| 模型     | mAP50-95 | mAP50 | 参数量 | FLOPs  |
+| -------- | -------- | ----- | ------ | ------ |
+| YOLOv11n | ~39%     | ~53%  | 2.6M   | 6.1B   |
+| YOLOv11s | ~47%     | ~62%  | 9.4M   | 21.4B  |
+| YOLOv11m | ~51%     | ~66%  | 20.9M  | 48.6B  |
+| YOLOv11l | ~53%     | ~68%  | 26.5M  | 60.9B  |
+| YOLOv11x | ~55%     | ~70%  | 58.8M  | 135.4B |
 
 **FCE 变体**：预期在相同参数量下提升 1-3% mAP。
 
 ## 常见问题
 
 ### CUDA Out of Memory
+
 ```bash
 python script/train.py baseline --scale s --dataset coco_hq --batch 64
 ```
 
 ### 数据加载慢
+
 ```bash
 python script/train.py baseline --scale s --dataset coco --cache ram
 ```
 
 ### 查看帮助
+
 ```bash
 python script/train.py --help
 python script/compare.py --help
@@ -219,6 +225,7 @@ python script/compare.py --help
 - **阶段二（300 epochs）**：全局微调，学习率 0.001，余弦退火
 
 可通过参数覆盖：
+
 ```bash
 # 覆盖 stage2 轮次（50+200）
 python script/train.py fce --scale s --dataset coco --epochs 200
