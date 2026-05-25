@@ -1,21 +1,23 @@
 """
-配置管理模块
+配置管理模块.
 
 定义训练配置、模型配置、数据集预设，以及配置覆盖逻辑。
 """
 
+from __future__ import annotations
+
 import argparse
 import dataclasses
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Callable, Dict, List, Optional
-
+from typing import Callable
 
 # ==================== 阶段配置 ====================
 
+
 @dataclass
 class StageConfig:
-    """阶段训练参数（lr, epochs, patience 等各阶段独立的参数）"""
+    """阶段训练参数（lr, epochs, patience 等各阶段独立的参数）."""
+
     epochs: int = 300
     patience: int = 50
     lr0: float = 0.001
@@ -25,15 +27,17 @@ class StageConfig:
 
 # ==================== 训练配置 ====================
 
+
 @dataclass
 class TrainConfig:
-    """完整训练配置
+    """完整训练配置.
 
     参数分为三类：
     - 共享参数：所有阶段共用（batch, imgsz, device 等）
     - 阶段参数：各阶段独立（通过 stage1/stage2 的 StageConfig 管理）
     - 保存和日志参数
     """
+
     # 数据集
     data: str = ""
 
@@ -58,11 +62,11 @@ class TrainConfig:
     plots: bool = True
 
     # 两阶段配置（stage1=None 表示单阶段训练）
-    stage1: Optional[StageConfig] = None
+    stage1: StageConfig | None = None
     stage2: StageConfig = field(default_factory=StageConfig)
 
-    def to_dict(self) -> Dict:
-        """转换为 YOLO train() 接受的字典"""
+    def to_dict(self) -> dict:
+        """转换为 YOLO train() 接受的字典."""
         d = {
             "data": self.data,
             "batch": self.batch,
@@ -87,28 +91,30 @@ class TrainConfig:
 
 # ==================== 模型配置 ====================
 
+
 @dataclass
 class ModelConfig:
-    """模型变体配置"""
+    """模型变体配置."""
+
     name: str
     yaml_path: str
     color: str
     display_name: Callable[[str], str]
     freeze: int = 0
-    stage1: Optional[StageConfig] = None
+    stage1: StageConfig | None = None
     stage2: StageConfig = field(default_factory=StageConfig)
     result_pattern: str = ""
 
     def get_display_name(self, scale: str) -> str:
-        """获取显示名称"""
+        """获取显示名称."""
         return self.display_name(scale)
 
     def is_two_stage(self) -> bool:
-        """是否为两阶段训练"""
+        """是否为两阶段训练."""
         return self.stage1 is not None
 
-    def get_result_path(self, scale: str, stage: Optional[int] = None) -> str:
-        """获取结果目录路径
+    def get_result_path(self, scale: str, stage: int | None = None) -> str:
+        """获取结果目录路径.
 
         Args:
             scale: 模型尺度
@@ -121,7 +127,7 @@ class ModelConfig:
 
 
 def get_model_config(model_type: str) -> ModelConfig:
-    """获取模型配置
+    """获取模型配置.
 
     Args:
         model_type: 模型类型
@@ -140,15 +146,14 @@ def get_model_config(model_type: str) -> ModelConfig:
 
 # ==================== 模型配置表 ====================
 
-MODEL_CONFIGS: Dict[str, ModelConfig] = {
+MODEL_CONFIGS: dict[str, ModelConfig] = {
     "baseline": ModelConfig(
         name="baseline",
         yaml_path="ultralytics/cfg/models/11/yolo11.yaml",
         color="#0BDBEB",
         display_name=lambda s: f"YOLOv11{s.upper()} Baseline",
         stage1=None,
-        stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
-                           cos_lr=True, close_mosaic=20),
+        stage2=StageConfig(epochs=300, patience=50, lr0=0.001, cos_lr=True, close_mosaic=20),
         result_pattern="baseline_yolo11{scale}",
     ),
     "bifpn": ModelConfig(
@@ -157,10 +162,8 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         color="#042AFF",
         display_name=lambda s: f"YOLOv11{s.upper()}-BiFPN",
         freeze=10,
-        stage1=StageConfig(epochs=50, patience=20, lr0=0.01,
-                           cos_lr=False, close_mosaic=10),
-        stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
-                           cos_lr=True, close_mosaic=20),
+        stage1=StageConfig(epochs=50, patience=20, lr0=0.01, cos_lr=False, close_mosaic=10),
+        stage2=StageConfig(epochs=300, patience=50, lr0=0.001, cos_lr=True, close_mosaic=20),
         result_pattern="bifpn_{scale}_stage2",
     ),
     "fce": ModelConfig(
@@ -169,10 +172,8 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         color="#FF6B00",
         display_name=lambda s: f"YOLOv11{s.upper()}-FCE",
         freeze=10,
-        stage1=StageConfig(epochs=50, patience=20, lr0=0.01,
-                           cos_lr=False, close_mosaic=10),
-        stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
-                           cos_lr=True, close_mosaic=20),
+        stage1=StageConfig(epochs=50, patience=20, lr0=0.01, cos_lr=False, close_mosaic=10),
+        stage2=StageConfig(epochs=300, patience=50, lr0=0.001, cos_lr=True, close_mosaic=20),
         result_pattern="fce_{scale}_stage2",
     ),
 }
@@ -180,7 +181,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
 
 # ==================== 数据集预设 ====================
 
-DATASET_PRESETS: Dict[str, TrainConfig] = {
+DATASET_PRESETS: dict[str, TrainConfig] = {
     "default": TrainConfig(
         data="/mnt/ssd1/Dataset/haixi_jixieshou/yolo_dataset/data.yaml",
         imgsz=1280,
@@ -206,7 +207,7 @@ DATASET_PRESETS: Dict[str, TrainConfig] = {
 
 
 def get_dataset_preset(name: str) -> TrainConfig:
-    """获取数据集预设配置
+    """获取数据集预设配置.
 
     Args:
         name: 预设名称 (default/coco/coco_hq)
@@ -221,7 +222,7 @@ def get_dataset_preset(name: str) -> TrainConfig:
 
 
 def get_quick_test_config() -> TrainConfig:
-    """获取快速测试配置"""
+    """获取快速测试配置."""
     return TrainConfig(
         imgsz=64,
         batch=2,
@@ -238,24 +239,40 @@ def get_quick_test_config() -> TrainConfig:
 
 # CLI 参数分类
 SHARED_PARAMS = {
-    "batch", "imgsz", "device", "workers", "amp", "cache",
-    "optimizer", "lrf", "momentum", "weight_decay", "iou_type",
-    "project", "save_period", "verbose", "plots",
+    "batch",
+    "imgsz",
+    "device",
+    "workers",
+    "amp",
+    "cache",
+    "optimizer",
+    "lrf",
+    "momentum",
+    "weight_decay",
+    "iou_type",
+    "project",
+    "save_period",
+    "verbose",
+    "plots",
 }
 
 STAGE2_PARAMS = {
-    "epochs", "lr0", "patience", "cos_lr", "close_mosaic",
+    "epochs",
+    "lr0",
+    "patience",
+    "cos_lr",
+    "close_mosaic",
 }
 
 
 def apply_overrides(
     config: TrainConfig,
     model_cfg: ModelConfig,
-    shared: Optional[Dict] = None,
-    stage2: Optional[Dict] = None,
-    stage1: Optional[Dict] = None,
+    shared: dict | None = None,
+    stage2: dict | None = None,
+    stage1: dict | None = None,
 ) -> TrainConfig:
-    """应用用户覆盖到训练配置
+    """应用用户覆盖到训练配置.
 
     流程：
     1. 从 model_cfg 填充两阶段配置
@@ -310,11 +327,11 @@ def apply_overrides(
 
 def build_overrides_from_namespace(
     args: argparse.Namespace,
-    shared_keys: dict = None,
-    stage2_keys: dict = None,
+    shared_keys: dict | None = None,
+    stage2_keys: dict | None = None,
     stage1_prefix: str = "stage1_",
 ) -> tuple:
-    """从 argparse.Namespace 构建三类 override 字典
+    """从 argparse.Namespace 构建三类 override 字典.
 
     Args:
         args: argparse 解析结果
@@ -327,13 +344,20 @@ def build_overrides_from_namespace(
     """
     if shared_keys is None:
         shared_keys = {
-            "batch": "batch", "imgsz": "imgsz", "device": "device",
-            "workers": "workers", "iou_type": "iou_type", "cache": "cache",
+            "batch": "batch",
+            "imgsz": "imgsz",
+            "device": "device",
+            "workers": "workers",
+            "iou_type": "iou_type",
+            "cache": "cache",
         }
     if stage2_keys is None:
         stage2_keys = {
-            "epochs": "epochs", "lr0": "lr0", "patience": "patience",
-            "cos_lr": "cos_lr", "close_mosaic": "close_mosaic",
+            "epochs": "epochs",
+            "lr0": "lr0",
+            "patience": "patience",
+            "cos_lr": "cos_lr",
+            "close_mosaic": "close_mosaic",
         }
 
     shared = {}
@@ -370,6 +394,6 @@ def build_overrides_from_namespace(
         if attr.startswith(stage1_prefix):
             val = getattr(args, attr, None)
             if val is not None:
-                stage1[attr[len(stage1_prefix):]] = val
+                stage1[attr[len(stage1_prefix) :]] = val
 
     return shared, stage2, stage1
