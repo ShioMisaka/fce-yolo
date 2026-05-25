@@ -66,29 +66,29 @@ MODEL          模型类型 (baseline, bifpn, fce)
 ## 对比 CLI
 
 ```bash
-python script/compare.py --models <MODELS> [OPTIONS]
+python script/compare.py --models < MODELS > [OPTIONS]
 
 # 必选
---models MODELS [MODELS ...]  要对比的模型列表
+--models MODELS [MODELS ...] 要对比的模型列表
 
 # 常用参数（同训练 CLI）
 --scale, --dataset, --data, --batch, --imgsz, --epochs, --iou-type ...
 
 # 对比控制
---skip-train   跳过训练，仅对比已有结果
---output DIR   自定义输出目录
---test         快速测试模式
+--skip-train 跳过训练，仅对比已有结果
+--output DIR 自定义输出目录
+--test 快速测试模式
 ```
 
 ## 配置系统
 
 ### 参数分类
 
-| 参数类别 | CLI 示例 | 影响范围 |
-|---------|---------|---------|
-| 共享参数 | `--batch`, `--imgsz`, `--device`, `--workers` | 所有阶段 |
-| 阶段参数 | `--epochs`, `--lr0`, `--patience` | 仅 stage2 |
-| stage1 覆盖 | `--stage1-epochs`, `--stage1-lr0` | 仅 stage1 |
+| 参数类别    | CLI 示例                                      | 影响范围  |
+| ----------- | --------------------------------------------- | --------- |
+| 共享参数    | `--batch`, `--imgsz`, `--device`, `--workers` | 所有阶段  |
+| 阶段参数    | `--epochs`, `--lr0`, `--patience`             | 仅 stage2 |
+| stage1 覆盖 | `--stage1-epochs`, `--stage1-lr0`             | 仅 stage1 |
 
 - `--epochs 200` 对两阶段模型意味着 50+200，对单阶段模型是 200
 - `--batch 16` 对所有阶段生效
@@ -96,11 +96,11 @@ python script/compare.py --models <MODELS> [OPTIONS]
 
 ### 数据集预设
 
-| 预设 | 数据集 | imgsz | batch | workers | cache |
-|------|--------|-------|-------|---------|-------|
-| `default` | 海西机械手 | 1280 | 32 | 16 | ram |
-| `coco` | COCO | 640 | 16 | 8 | false |
-| `coco_hq` | COCO 高性能 | 640 | 128 | 24 | ram |
+| 预设      | 数据集      | imgsz | batch | workers | cache |
+| --------- | ----------- | ----- | ----- | ------- | ----- |
+| `default` | 海西机械手  | 1280  | 32    | 16      | ram   |
+| `coco`    | COCO        | 640   | 16    | 8       | false |
+| `coco_hq` | COCO 高性能 | 640   | 128   | 24      | ram   |
 
 ### 两阶段训练
 
@@ -142,12 +142,14 @@ python script/compare.py --models baseline fce --scale s --iou-type WIoU
 `script/analysis.py` 提供无状态纯函数，可直接在 Python 中使用，适合自定义对比分析：
 
 ```python
-from script.analysis import (
-    load_results, extract_metrics,
-    print_comparison_table, plot_comparison_curves,
-    save_comparison_summary,
-)
 from pathlib import Path
+
+from script.analysis import (
+    extract_metrics,
+    load_results,
+    plot_comparison_curves,
+    print_comparison_table,
+)
 
 # 加载两个 CSV 结果
 csv1 = Path("runs/detect/fce_s_stage2/results.csv")

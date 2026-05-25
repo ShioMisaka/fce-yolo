@@ -160,9 +160,9 @@ class BboxLoss(nn.Module):
 
             # Update running mean with exponential moving average
             momentum = 0.9
-            self._wiou_loss_mean = (
-                (1 - momentum) * self._wiou_loss_mean + momentum * loss_iou.mean().clamp(min=eps).item()
-            )
+            self._wiou_loss_mean = (1 - momentum) * self._wiou_loss_mean + momentum * loss_iou.mean().clamp(
+                min=eps
+            ).item()
 
         return r
 
