@@ -50,16 +50,19 @@ script/
 ```python
 @dataclass
 class StageConfig:
-    """阶段训练参数"""
+    """阶段训练参数."""
+
     epochs: int = 300
     patience: int = 50
     lr0: float = 0.001
     cos_lr: bool = True
     close_mosaic: int = 20
 
+
 @dataclass
 class TrainConfig:
-    """完整训练配置"""
+    """完整训练配置."""
+
     # 数据集
     data: str = ""
     # 共享参数
@@ -85,11 +88,13 @@ class TrainConfig:
     stage2: StageConfig = field(default_factory=StageConfig)
 
     def to_dict(self) -> Dict:
-        """转换为 YOLO train() 参数字典"""
+        """转换为 YOLO train() 参数字典."""
+
 
 @dataclass
 class ModelConfig:
-    """模型变体配置"""
+    """模型变体配置."""
+
     name: str
     yaml_path: str
     color: str
@@ -109,15 +114,24 @@ class ModelConfig:
 DATASET_PRESETS = {
     "default": TrainConfig(
         data="/mnt/ssd1/Dataset/haixi_jixieshou/yolo_dataset/data.yaml",
-        imgsz=1280, batch=32, workers=16, cache=True,
+        imgsz=1280,
+        batch=32,
+        workers=16,
+        cache=True,
     ),
     "coco": TrainConfig(
         data="coco.yaml",
-        imgsz=640, batch=16, workers=8, cache=False,
+        imgsz=640,
+        batch=16,
+        workers=8,
+        cache=False,
     ),
     "coco_hq": TrainConfig(
         data="ultralytics/cfg/datasets/coco_custom.yaml",
-        imgsz=640, batch=128, workers=24, cache="ram",
+        imgsz=640,
+        batch=128,
+        workers=24,
+        cache="ram",
     ),
 }
 ```
@@ -132,8 +146,7 @@ MODEL_CONFIGS = {
         color="#0BDBEB",
         display_name=lambda s: f"YOLOv11{s.upper()} Baseline",
         stage1=None,  # 单阶段
-        stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
-                           cos_lr=True, close_mosaic=20),
+        stage2=StageConfig(epochs=300, patience=50, lr0=0.001, cos_lr=True, close_mosaic=20),
         result_pattern="baseline_yolo11{scale}",
     ),
     "bifpn": ModelConfig(
@@ -142,10 +155,8 @@ MODEL_CONFIGS = {
         color="#042AFF",
         display_name=lambda s: f"YOLOv11{s.upper()}-BiFPN",
         freeze=10,
-        stage1=StageConfig(epochs=50, patience=20, lr0=0.01,
-                           cos_lr=False, close_mosaic=10),
-        stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
-                           cos_lr=True, close_mosaic=20),
+        stage1=StageConfig(epochs=50, patience=20, lr0=0.01, cos_lr=False, close_mosaic=10),
+        stage2=StageConfig(epochs=300, patience=50, lr0=0.001, cos_lr=True, close_mosaic=20),
         result_pattern="bifpn_{scale}_stage2",
     ),
     "fce": ModelConfig(
@@ -154,10 +165,8 @@ MODEL_CONFIGS = {
         color="#FF6B00",
         display_name=lambda s: f"YOLOv11{s.upper()}-FCE",
         freeze=10,
-        stage1=StageConfig(epochs=50, patience=20, lr0=0.01,
-                           cos_lr=False, close_mosaic=10),
-        stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
-                           cos_lr=True, close_mosaic=20),
+        stage1=StageConfig(epochs=50, patience=20, lr0=0.01, cos_lr=False, close_mosaic=10),
+        stage2=StageConfig(epochs=300, patience=50, lr0=0.001, cos_lr=True, close_mosaic=20),
         result_pattern="fce_{scale}_stage2",
     ),
 }
@@ -166,8 +175,7 @@ MODEL_CONFIGS = {
 ### Override 逻辑
 
 ```python
-def apply_overrides(config: TrainConfig, model_cfg: ModelConfig,
-                    shared: dict, stage2: dict, stage1: dict):
+def apply_overrides(config: TrainConfig, model_cfg: ModelConfig, shared: dict, stage2: dict, stage1: dict):
     # 1. 从 model_cfg 填充两阶段配置
     if model_cfg.is_two_stage():
         config.stage1 = dataclasses.replace(model_cfg.stage1)
@@ -186,11 +194,11 @@ def apply_overrides(config: TrainConfig, model_cfg: ModelConfig,
 
 CLI 参数到三类覆盖的映射：
 
-| CLI 参数 | 分类 | 影响范围 |
-|---------|------|---------|
-| `--batch`, `--imgsz`, `--device`, `--workers`, `--amp`, `--cache`, `--optimizer`, `--iou-type` | 共享 | 所有阶段 |
-| `--epochs`, `--lr0`, `--patience`, `--cos-lr` | 阶段 | stage2 |
-| `--stage1-epochs`, `--stage1-lr0`, `--stage1-patience` | stage1 | stage1 |
+| CLI 参数                                                                                       | 分类   | 影响范围 |
+| ---------------------------------------------------------------------------------------------- | ------ | -------- |
+| `--batch`, `--imgsz`, `--device`, `--workers`, `--amp`, `--cache`, `--optimizer`, `--iou-type` | 共享   | 所有阶段 |
+| `--epochs`, `--lr0`, `--patience`, `--cos-lr`                                                  | 阶段   | stage2   |
+| `--stage1-epochs`, `--stage1-lr0`, `--stage1-patience`                                         | stage1 | stage1   |
 
 ## 训练器 (`trainer.py`)
 
@@ -202,21 +210,21 @@ class YOLOv11Trainer:
         self.config = config
         self.pretrained = f"yolo11{scale}.pt"
 
-    def _build_train_args(self, stage_config: StageConfig,
-                          freeze: int = 0, name: str = "") -> dict:
-        """合并共享参数 + 阶段参数为 YOLO train() 字典"""
+    def _build_train_args(self, stage_config: StageConfig, freeze: int = 0, name: str = "") -> dict:
+        """合并共享参数 + 阶段参数为 YOLO train() 字典."""
 
     def train(self) -> Union[Path, Dict[str, Path]]:
-        """根据 model_cfg 自动选择单阶段/两阶段"""
+        """根据 model_cfg 自动选择单阶段/两阶段."""
 
     def _train_single_stage(self) -> Path:
-        """单阶段训练"""
+        """单阶段训练."""
 
     def _train_two_stage(self) -> Dict[str, Path]:
-        """两阶段训练：stage1(冻结预热) → stage2(全局微调)"""
+        """两阶段训练：stage1(冻结预热) → stage2(全局微调)."""
 ```
 
 关键设计：
+
 - 配置在构造时已确定，训练方法无配置逻辑
 - `_build_train_args` 负责 TrainConfig + StageConfig → dict 的合并
 - stage2 通过 `YOLO(s1_weights)` 加载阶段一权重
