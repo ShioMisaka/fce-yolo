@@ -154,14 +154,12 @@ def bbox_wiou(
 ) -> torch.Tensor:
     """Calculate Wise-IoU (WIoU) v1 metric between bounding boxes.
 
-    Implements the distance-wise attention mechanism from WIoU v1. The WIoU v3
-    dynamic non-monotonic focusing mechanism is applied in BboxLoss when
-    iou_type='WIoU'.
+    Implements the distance-wise attention mechanism from WIoU v1. The WIoU v3 dynamic non-monotonic focusing mechanism
+    is applied in BboxLoss when iou_type='WIoU'.
 
-    Unlike DIoU's additive distance penalty (IoU - ρ²/C²), WIoU uses a
-    multiplicative attention weight: metric = 1 - exp(ρ²/(Cw²+Ch²)) * (1-IoU).
-    This proportionally amplifies the loss for distant boxes while preserving
-    the IoU-based ranking.
+    Unlike DIoU's additive distance penalty (IoU - ρ²/C²), WIoU uses a multiplicative attention weight: metric = 1 -
+    exp(ρ²/(Cw²+Ch²)) * (1-IoU). This proportionally amplifies the loss for distant boxes while preserving the IoU-based
+    ranking.
 
     Args:
         box1 (torch.Tensor): A tensor representing bounding boxes in (x, y, w, h) or (x1, y1, x2, y2) format.
