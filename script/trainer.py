@@ -1,12 +1,13 @@
 """
-训练器模块
+训练器模块.
 
 提供 YOLOv11 变体模型的训练功能，支持单阶段和两阶段训练。
 """
 
+from __future__ import annotations
+
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, Optional, Union
 
 from ultralytics import YOLO
 
@@ -14,10 +15,9 @@ from .config import ModelConfig, StageConfig, TrainConfig
 
 
 class YOLOv11Trainer:
-    """YOLOv11 变体模型训练器
+    """YOLOv11 变体模型训练器.
 
-    根据 ModelConfig 自动选择单阶段或两阶段训练。
-    所有配置在构造时确定，训练方法内无配置逻辑。
+    根据 ModelConfig 自动选择单阶段或两阶段训练。 所有配置在构造时确定，训练方法内无配置逻辑。
     """
 
     def __init__(
@@ -26,7 +26,7 @@ class YOLOv11Trainer:
         scale: str,
         config: TrainConfig,
     ):
-        """初始化训练器
+        """初始化训练器.
 
         Args:
             model_cfg: 模型配置（从 MODEL_CONFIGS 获取）
@@ -44,7 +44,7 @@ class YOLOv11Trainer:
         freeze: int = 0,
         name: str = "",
     ) -> dict:
-        """构建单次 YOLO train() 的参数
+        """构建单次 YOLO train() 的参数.
 
         合并 TrainConfig 的共享参数和 StageConfig 的阶段参数。
 
@@ -64,8 +64,8 @@ class YOLOv11Trainer:
             args["name"] = name
         return args
 
-    def train(self) -> Union[Path, Dict[str, Path]]:
-        """执行训练
+    def train(self) -> Path | dict[str, Path]:
+        """执行训练.
 
         根据 model_cfg 自动选择单阶段或两阶段。
 
@@ -77,7 +77,7 @@ class YOLOv11Trainer:
         return self._train_single_stage()
 
     def _train_single_stage(self) -> Path:
-        """单阶段训练
+        """单阶段训练.
 
         Returns:
             训练结果目录路径
@@ -97,8 +97,8 @@ class YOLOv11Trainer:
         print(f"\n✓ 训练完成: {result_dir}")
         return result_dir
 
-    def _train_two_stage(self) -> Dict[str, Path]:
-        """两阶段训练
+    def _train_two_stage(self) -> dict[str, Path]:
+        """两阶段训练.
 
         阶段一：冻结预热（freeze backbone，训练新增模块）
         阶段二：全局微调（加载阶段一权重，端到端训练）
