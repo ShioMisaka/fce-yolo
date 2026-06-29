@@ -27,6 +27,8 @@ from ultralytics.nn.modules import (
     A2C2f,
     AConv,
     ADown,
+    BiCoordCrossAtt,
+    BiFPN_Concat,
     Bottleneck,
     BottleneckCSP,
     C2f,
@@ -43,6 +45,8 @@ from ultralytics.nn.modules import (
     Conv,
     Conv2,
     ConvTranspose,
+    CoordAtt,
+    CoordCrossAtt,
     Detect,
     DWConv,
     DWConvTranspose2d,
@@ -68,10 +72,6 @@ from ultralytics.nn.modules import (
     YOLOEDetect,
     YOLOESegment,
     v10Detect,
-    BiFPN_Concat,
-    CoordAtt,
-    CoordCrossAtt,
-    BiCoordCrossAtt,
 )
 from ultralytics.utils import DEFAULT_CFG_DICT, LOGGER, YAML, colorstr, emojis
 from ultralytics.utils.checks import check_requirements, check_suffix, check_yaml
@@ -1646,7 +1646,7 @@ def parse_model(d, ch, verbose=True):
                 reduction = args[1]
             else:
                 # 默认reduction：取inp的平方根，确保在8-32之间
-                reduction = max(8, min(32, int(inp ** 0.5)))
+                reduction = max(8, min(32, int(inp**0.5)))
 
             c2 = oup
             args = [inp, oup, reduction]
@@ -1662,7 +1662,7 @@ def parse_model(d, ch, verbose=True):
             if len(args) > 1:
                 reduction = args[1]
             else:
-                reduction = max(8, min(32, int(inp ** 0.5)))
+                reduction = max(8, min(32, int(inp**0.5)))
 
             # 自适应num_heads：确保每个头至少有8个通道
             if len(args) > 2:
@@ -1690,7 +1690,7 @@ def parse_model(d, ch, verbose=True):
                 reduction = args[1]
             else:
                 # 默认reduction：取inp的平方根，确保在8-32之间
-                reduction = max(8, min(32, int(inp ** 0.5)))
+                reduction = max(8, min(32, int(inp**0.5)))
 
             # 自适应num_heads：确保每个头至少有8个通道
             if len(args) > 2:

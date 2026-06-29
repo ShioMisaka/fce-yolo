@@ -1,20 +1,19 @@
 """
-对比分析模块
+对比分析模块.
 
 提供训练结果的加载、指标提取、对比展示等功能。
 所有函数为无状态纯函数，不依赖特定的配置类。
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import pandas as pd
 
-
 # ==================== 指标提取 ====================
 
+
 def load_results(csv_path: Path) -> pd.DataFrame:
-    """加载训练结果 CSV 文件
+    """加载训练结果 CSV 文件.
 
     Args:
         csv_path: results.csv 路径
@@ -30,8 +29,8 @@ def load_results(csv_path: Path) -> pd.DataFrame:
     return df
 
 
-def extract_metrics(df: pd.DataFrame) -> Dict[str, float]:
-    """提取关键指标
+def extract_metrics(df: pd.DataFrame) -> dict[str, float]:
+    """提取关键指标.
 
     Args:
         df: 训练结果 DataFrame
@@ -82,11 +81,11 @@ METRICS_TO_COMPARE = [
 
 
 def print_comparison_table(
-    metrics: Dict[str, Dict[str, float]],
-    names: Dict[str, str],
+    metrics: dict[str, dict[str, float]],
+    names: dict[str, str],
     title: str = "",
 ):
-    """打印终端对比表格
+    """打印终端对比表格.
 
     Args:
         metrics: {key: {metric_key: value}}
@@ -124,13 +123,13 @@ def print_comparison_table(
 
 
 def plot_comparison_curves(
-    dataframes: Dict[str, pd.DataFrame],
-    names: Dict[str, str],
-    colors: Dict[str, str],
+    dataframes: dict[str, pd.DataFrame],
+    names: dict[str, str],
+    colors: dict[str, str],
     save_path: Path,
     title: str = "",
 ):
-    """绘制 4 合 1 对比曲线图
+    """绘制 4 合 1 对比曲线图.
 
     Args:
         dataframes: {key: DataFrame}
@@ -140,18 +139,21 @@ def plot_comparison_curves(
         title: 图表标题
     """
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    plt.rcParams.update({
-        "font.size": 11,
-        "axes.linewidth": 1.0,
-        "axes.grid": True,
-        "grid.alpha": 0.2,
-        "lines.linewidth": 2,
-    })
+    plt.rcParams.update(
+        {
+            "font.size": 11,
+            "axes.linewidth": 1.0,
+            "axes.grid": True,
+            "grid.alpha": 0.2,
+            "lines.linewidth": 2,
+        }
+    )
 
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10), tight_layout=True)
+    _fig, axes = plt.subplots(2, 2, figsize=(14, 10), tight_layout=True)
 
     metrics_config = [
         ("metrics/mAP50-95(B)", "mAP@50-95"),
@@ -184,11 +186,11 @@ def plot_comparison_curves(
 
 def save_comparison_summary(
     output_path: Path,
-    metrics: Dict[str, Dict[str, float]],
-    names: Dict[str, str],
+    metrics: dict[str, dict[str, float]],
+    names: dict[str, str],
     config_info: dict,
 ):
-    """保存对比摘要到文本文件
+    """保存对比摘要到文本文件.
 
     Args:
         output_path: 输出文件路径
@@ -236,11 +238,12 @@ def save_comparison_summary(
 
 # ==================== 结果整理 ====================
 
+
 def reorganize_results(
-    result_paths: Dict[str, str],
+    result_paths: dict[str, str],
     output_dir: Path,
-) -> Dict[str, Path]:
-    """移动训练结果到统一目录
+) -> dict[str, Path]:
+    """移动训练结果到统一目录.
 
     Args:
         result_paths: {key: 原始结果目录路径}
