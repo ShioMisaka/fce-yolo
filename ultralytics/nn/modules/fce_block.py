@@ -3,15 +3,12 @@ import torch.nn as nn
 
 from .conv import Conv
 
-__all__ = (
-    "BiFPN_Concat",
-    "CoordAtt",
-    "CoordCrossAtt",
-    "BiCoordCrossAtt"
-)
+__all__ = ("BiCoordCrossAtt", "BiFPN_Concat", "CoordAtt", "CoordCrossAtt")
+
 
 class BiFPN_Concat(nn.Module):
-    """Learnable weighted feature fusion and bidirectional cross-scale connectivity Concat"""
+    """Learnable weighted feature fusion and bidirectional cross-scale connectivity Concat."""
+
     def __init__(self, c1, c2=None):
         """Initialize C3k2 module.
 
@@ -19,11 +16,11 @@ class BiFPN_Concat(nn.Module):
             c1 (int): Input channels.
             c2 (int): Output channels.
         """
-        super(BiFPN_Concat, self).__init__()
-        
+        super().__init__()
+
         # 确定最终输出的通道数
         self.output_ch = c2 if c2 else max(c1)
-        
+
         # 为通道数不等于 output_ch 的输入创建 1x1 卷积进行对齐
         self.realign_convs = nn.ModuleList()
         for ch in c1:
@@ -37,7 +34,7 @@ class BiFPN_Concat(nn.Module):
         self.w = nn.Parameter(torch.ones(len(c1), dtype=torch.float32), requires_grad=True)
         self.epsilon = 1e-4
 
-    def forward(self, x: list[torch.Tensor])-> torch.Tensor:
+    def forward(self, x: list[torch.Tensor]) -> torch.Tensor:
         """Perform a forward pass of the BiFPN block.
 
         Args:
@@ -50,24 +47,23 @@ class BiFPN_Concat(nn.Module):
         processed_x = []
         for i, tensor in enumerate(x):
             processed_x.append(self.realign_convs[i](tensor))
-            
+
         # 2. 归一化权重
         w = torch.relu(self.w)
         weight = w / (torch.sum(w, dim=0) + self.epsilon)
-        
+
         # 3. 加权融合
         result = weight[0] * processed_x[0]
         for i in range(1, len(processed_x)):
             result += weight[i] * processed_x[i]
-            
-        return result
-    
-class CoordAtt(nn.Module):
-    """
-    Coordinate Attention 模块 (标准版)
 
-    通过分别捕获水平和垂直方向的空间依赖关系来增强特征表达。
-    参考: https://arxiv.org/abs/2103.02907
+        return result
+
+
+class CoordAtt(nn.Module):
+    """Coordinate Attention 模块 (标准版).
+
+    通过分别捕获水平和垂直方向的空间依赖关系来增强特征表达。 参考: https://arxiv.org/abs/2103.02907
 
     Args:
         inp: 输入通道数
@@ -95,7 +91,7 @@ class CoordAtt(nn.Module):
         self.identity = nn.Conv2d(inp, oup, 1) if inp != oup else nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        n, c, h, w = x.size()
+        _n, _c, h, w = x.size()
 
         # --- 信息嵌入 (Embedding) ---
         x_h = self.pool_h(x)  # [N, C, H, 1]
@@ -117,11 +113,9 @@ class CoordAtt(nn.Module):
 
 
 class CoordCrossAtt(nn.Module):
-    """
-    Coordinate Cross Attention 模块
+    """Coordinate Cross Attention 模块.
 
-    在 CoordAtt 的基础上引入 Cross-Attention 机制，让水平和垂直特征之间
-    进行更深入的交互，捕获跨方向的空间依赖关系。
+    在 CoordAtt 的基础上引入 Cross-Attention 机制，让水平和垂直特征之间 进行更深入的交互，捕获跨方向的空间依赖关系。
 
     Args:
         inp: 输入通道数
@@ -130,7 +124,7 @@ class CoordCrossAtt(nn.Module):
         num_heads: 多头注意力的头数
     """
 
-    def __init__(self, inp: int, oup: int, reduction: int=32, num_heads=1):
+    def __init__(self, inp: int, oup: int, reduction: int = 32, num_heads=1):
         super().__init__()
         self.mip = max(8, inp // reduction)
         self.num_heads = num_heads
@@ -153,7 +147,7 @@ class CoordCrossAtt(nn.Module):
         self.gate = nn.Sigmoid()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        n, c, h, w = x.size()
+        n, _c, h, w = x.size()
 
         # 1. 嵌入与压缩
         x_h = self.pool_h(x)  # [N, mip, H, 1]
@@ -181,8 +175,7 @@ class CoordCrossAtt(nn.Module):
 
 
 class BiCoordCrossAtt(nn.Module):
-    """
-    Bidirectional Coordinate Cross Attention
+    """Bidirectional Coordinate Cross Attention.
 
     特点：
     1. 对称结构：同时计算 H->W 和 W->H 的注意力，保证两个方向都被增强。
@@ -201,7 +194,7 @@ class BiCoordCrossAtt(nn.Module):
         # 为了减少计算量，Attention 内部通道数可以更小
         self.dim_head = max(8, inp // reduction) // num_heads
         self.mid_dim = self.dim_head * num_heads
-        self.scale = self.dim_head ** -0.5
+        self.scale = self.dim_head**-0.5
 
         # 空间池化
         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
@@ -227,7 +220,7 @@ class BiCoordCrossAtt(nn.Module):
         self.identity = nn.Conv2d(inp, oup, 1) if inp != oup else nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        n, c, h, w = x.size()
+        n, _c, h, w = x.size()
 
         # 1. 池化获得方向向量
         x_h = self.pool_h(x)  # [N, C, H, 1]

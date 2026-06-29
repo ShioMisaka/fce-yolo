@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Development Commands
 
 ### Running Tests
+
 ```bash
 # Run all tests (excludes slow tests by default)
 pytest tests/
@@ -20,6 +21,7 @@ pytest --cov=ultralytics/ --cov-report=xml tests/
 ```
 
 ### Code Quality
+
 ```bash
 # Format code with Ruff
 ruff format .
@@ -32,6 +34,7 @@ yolo checks
 ```
 
 ### Model Training/Testing
+
 ```bash
 # Quick test train
 yolo train model=yolo11n.pt data=coco8.yaml epochs=1 imgsz=32
@@ -50,6 +53,7 @@ yolo export model=yolo11n.pt format=onnx
 ```
 
 ### Installation
+
 ```bash
 # Development installation
 pip install -e .
@@ -65,6 +69,7 @@ pip install -e ".[export,solutions,logging]"
 ### Core Components
 
 **Engine Layer** (`ultralytics/engine/`)
+
 - `Model`: Base class for all models, provides unified API for train/val/predict/export/tune
 - `BaseTrainer`: Base class for training loops
 - `BaseValidator`: Base class for validation
@@ -72,16 +77,19 @@ pip install -e ".[export,solutions,logging]"
 - `Results`: Unified output class for all tasks
 
 **Models Layer** (`ultralytics/models/`)
+
 - `YOLO`: Main YOLO model class that auto-detects task type from filename
 - `yolo/`: Task-specific implementations (detect, segment, classify, pose, obb)
 - Each task has its own: trainer, validator, predictor, and model class
 
 **Neural Network Layer** (`ultralytics/nn/`)
+
 - `tasks.py`: Contains all model task implementations (DetectionModel, SegmentationModel, etc.)
 - `modules/`: Reusable building blocks (Conv, C2f, Transformer blocks, etc.)
 - `autobackend.py`: Handles inference on various model formats (PyTorch, ONNX, TensorRT, etc.)
 
 **Configuration** (`ultralytics/cfg/`)
+
 - `default.yaml`: All default training/validation/predict/export parameters
 - Model YAMLs in `cfg/models/`: Define model architectures
 - Dataset YAMLs in `cfg/datasets/`: Define dataset configurations
@@ -89,6 +97,7 @@ pip install -e ".[export,solutions,logging]"
 ### Task System
 
 The codebase supports 5 main tasks through a unified interface:
+
 - `detect`: Object detection
 - `segment`: Instance segmentation
 - `classify`: Image classification
@@ -100,6 +109,7 @@ Each task is mapped to specific implementations via the `task_map` property in m
 ### Model Variants
 
 The architecture supports multiple YOLO versions and variants:
+
 - YOLOv3, v5, v8, v9, v10, v11 (latest)
 - YOLOWorld (vision-language)
 - YOLOE (efficient variant)
@@ -113,6 +123,7 @@ Models are auto-detected from filename patterns (e.g., `yolo11n-seg.pt` loads a 
 **Hierarchy**: Default config → Model config → User overrides
 
 Configuration is handled through:
+
 1. `ultralytics/cfg/default.yaml`: Base defaults
 2. Model YAML files: Architecture-specific settings
 3. CLI arguments/Python kwargs: Runtime overrides
@@ -145,16 +156,17 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 
 检测任务支持可配置的 IoU 损失类型，通过 `default.yaml` 中的 `iou_type` 参数控制：
 
-| iou_type | 实现 | 说明 |
-|----------|------|------|
-| `CIoU` | `bbox_iou(CIoU=True)` | 默认，Complete IoU |
-| `DIoU` | `bbox_iou(DIoU=True)` | Distance IoU |
-| `GIoU` | `bbox_iou(GIoU=True)` | Generalized IoU |
-| `WIoU` | `bbox_wiou` + v3 聚焦 | Wise-IoU v3，动态非单调聚焦 |
+| iou_type | 实现                  | 说明                        |
+| -------- | --------------------- | --------------------------- |
+| `CIoU`   | `bbox_iou(CIoU=True)` | 默认，Complete IoU          |
+| `DIoU`   | `bbox_iou(DIoU=True)` | Distance IoU                |
+| `GIoU`   | `bbox_iou(GIoU=True)` | Generalized IoU             |
+| `WIoU`   | `bbox_wiou` + v3 聚焦 | Wise-IoU v3，动态非单调聚焦 |
 
 使用方式：`yolo train model=yolo11n.pt data=coco8.yaml iou_type=WIoU`
 
 **关键文件：**
+
 - `ultralytics/utils/metrics.py` — `bbox_iou`、`bbox_wiou`（IoU 计算函数）
 - `ultralytics/utils/loss.py` — `BboxLoss`（接收 `iou_type`，路由 IoU 计算）
 - `ultralytics/cfg/default.yaml` — `iou_type: CIoU` 配置项
@@ -167,12 +179,12 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 
 本项目在 `ultralytics/nn/modules/fce_block.py` 中实现了自定义特征增强模块：
 
-| 模块 | 描述 | 参考 |
-|------|------|------|
-| **BiFPN_Concat** | 可学习的加权特征融合，支持多尺度输入 | [EfficientDet](https://arxiv.org/abs/1911.09070) |
-| **CoordAtt** | 坐标注意力，分别捕获水平和垂直空间依赖 | [CoordAtt](https://arxiv.org/abs/2103.02907) |
-| **CoordCrossAtt** | 坐标交叉注意力，跨方向特征交互 | 基于 CoordAtt 改进 |
-| **BiCoordCrossAtt** | 双向坐标交叉注意力，对称 H<->W 交互 | 基于 CoordAtt 改进 |
+| 模块                | 描述                                   | 参考                                             |
+| ------------------- | -------------------------------------- | ------------------------------------------------ |
+| **BiFPN_Concat**    | 可学习的加权特征融合，支持多尺度输入   | [EfficientDet](https://arxiv.org/abs/1911.09070) |
+| **CoordAtt**        | 坐标注意力，分别捕获水平和垂直空间依赖 | [CoordAtt](https://arxiv.org/abs/2103.02907)     |
+| **CoordCrossAtt**   | 坐标交叉注意力，跨方向特征交互         | 基于 CoordAtt 改进                               |
+| **BiCoordCrossAtt** | 双向坐标交叉注意力，对称 H<->W 交互    | 基于 CoordAtt 改进                               |
 
 ### YAML 使用示例
 
@@ -181,13 +193,13 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 - [[-1, 6], 1, BiFPN_Concat, []]
 
 # CoordAtt: 坐标注意力
-- [-1, 1, CoordAtt, [256, 16]]  # oup=256, reduction=16
+- [-1, 1, CoordAtt, [256, 16]] # oup=256, reduction=16
 
 # CoordCrossAtt: 坐标交叉注意力
-- [-1, 1, CoordCrossAtt, [256, 16, 2]]  # oup=256, reduction=16, num_heads=2
+- [-1, 1, CoordCrossAtt, [256, 16, 2]] # oup=256, reduction=16, num_heads=2
 
 # BiCoordCrossAtt: 双向坐标交叉注意力
-- [-1, 1, BiCoordCrossAtt, [512, 16, 8]]  # oup=512, reduction=16, num_heads=8
+- [-1, 1, BiCoordCrossAtt, [512, 16, 8]] # oup=512, reduction=16, num_heads=8
 ```
 
 ## Training Scripts
@@ -207,21 +219,21 @@ Configuration uses `IterableSimpleNamespace` for convenient attribute access.
 
 参数分为三类：
 
-| 参数类别 | CLI 示例 | 影响范围 |
-|---------|---------|---------|
-| 共享参数 | `--batch`, `--imgsz`, `--device`, `--workers`, `--iou-type` | 所有阶段 |
-| 阶段参数 | `--epochs`, `--lr0`, `--patience` | 仅 stage2 |
-| stage1 覆盖 | `--stage1-epochs`, `--stage1-lr0` | 仅 stage1 |
+| 参数类别    | CLI 示例                                                    | 影响范围  |
+| ----------- | ----------------------------------------------------------- | --------- |
+| 共享参数    | `--batch`, `--imgsz`, `--device`, `--workers`, `--iou-type` | 所有阶段  |
+| 阶段参数    | `--epochs`, `--lr0`, `--patience`                           | 仅 stage2 |
+| stage1 覆盖 | `--stage1-epochs`, `--stage1-lr0`                           | 仅 stage1 |
 
 数据集预设：`--dataset default/coco/coco_hq`，自定义路径：`--data /path/to/data.yaml`
 
 ### 支持的模型类型
 
-| 模型类型 | YAML 配置 | 两阶段训练 | 说明 |
-|---------|----------|-----------|------|
-| `baseline` | `yolo11.yaml` | 否 | 原生 YOLOv11 模型 |
-| `bifpn` | `yolo11-bifpn.yaml` | 是 (50+300) | BiFPN 特征融合模型 |
-| `fce` | `yolo11-fce.yaml` | 是 (50+300) | FCE 特征增强模型 |
+| 模型类型   | YAML 配置           | 两阶段训练  | 说明               |
+| ---------- | ------------------- | ----------- | ------------------ |
+| `baseline` | `yolo11.yaml`       | 否          | 原生 YOLOv11 模型  |
+| `bifpn`    | `yolo11-bifpn.yaml` | 是 (50+300) | BiFPN 特征融合模型 |
+| `fce`      | `yolo11-fce.yaml`   | 是 (50+300) | FCE 特征增强模型   |
 
 ### 单模型训练
 
@@ -305,6 +317,7 @@ python script/test.py
 > 详细流程请参考：`.claude/skills/add-module/SKILL.md`
 
 简要步骤：
+
 1. 在 `ultralytics/nn/modules/fce_block.py` 中实现模块
 2. 更新 `__all__` 导出列表
 3. 在 `ultralytics/nn/tasks.py` 中导入模块
@@ -322,6 +335,7 @@ python script/test.py
    - 添加自定义模块
 
 2. **更新模型配置**（`script/config.py`）
+
    ```python
    MODEL_CONFIGS: Dict[str, ModelConfig] = {
        # ... 现有配置
@@ -331,10 +345,8 @@ python script/test.py
            color="#FF0000",  # 图表颜色
            display_name=lambda s: f"YOLOv11{s.upper()} YourModel",
            freeze=10,  # stage1 冻结层数
-           stage1=StageConfig(epochs=50, patience=20, lr0=0.01,
-                              cos_lr=False, close_mosaic=10),
-           stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
-                              cos_lr=True, close_mosaic=20),
+           stage1=StageConfig(epochs=50, patience=20, lr0=0.01, cos_lr=False, close_mosaic=10),
+           stage2=StageConfig(epochs=300, patience=50, lr0=0.001, cos_lr=True, close_mosaic=20),
            result_pattern="your_model_{scale}_stage2",
        ),
    }
@@ -345,6 +357,7 @@ python script/test.py
    - 如果只是结构调整但所有层都使用预训练权重，不设置 `stage1`（默认为 None，即单阶段）
 
 4. **测试模型配置**
+
    ```bash
    # 快速测试
    python script/train.py your_model --scale n --test
