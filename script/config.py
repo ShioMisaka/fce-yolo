@@ -175,6 +175,21 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
                            cos_lr=True, close_mosaic=20),
         result_pattern="fce_{scale}_stage2",
     ),
+    # 完整 FCE（含 WIoU 损失），结构与 fce 相同，仅损失函数不同，
+    # 结果目录单独命名以避免覆盖 CIoU 版 FCE 的实验。
+    # 训练时必须配合 --iou-type WIoU 使用。
+    "fce_wiou": ModelConfig(
+        name="fce_wiou",
+        yaml_path="ultralytics/cfg/models/11/yolo11-fce.yaml",
+        color="#E91E63",
+        display_name=lambda s: f"YOLOv11{s.upper()}-FCE(WIoU)",
+        freeze=10,
+        stage1=StageConfig(epochs=50, patience=20, lr0=0.01,
+                           cos_lr=False, close_mosaic=10),
+        stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
+                           cos_lr=True, close_mosaic=20),
+        result_pattern="fce_wiou_{scale}_stage2",
+    ),
 }
 
 
