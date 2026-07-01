@@ -201,6 +201,11 @@ def is_experiment_complete(scale: str, model_key: str, recipe: dict) -> bool:
     """判断某 (scale, model) 组合是否已完成（断点续跑判定）。
 
     判据：stage2/best.pt 存在 且 results.csv 行数 >= stage2.epochs * 0.9（容忍早停）。
+
+    策略说明（review I1）：0.9 阈值同时覆盖"正常早停"和"stage2 训练到 90% 后被中断"两种
+    情形——后者按"接受现状、视作完成"处理。理由：best.pt 已在 best 轮保存，论文用 best
+    指标（非末轮），所以即便 stage2 末段缺失也不影响 best 指标采集；重训反而浪费数小时。
+    若需严格"必须训完 stage2.epochs 轮"，把 0.9 改为 1.0 即可（但早停触发时永远 < epochs）。
     """
     s2_full = _stage2_run_dir(model_key, scale)
     best_pt = s2_full / "weights" / "best.pt"
@@ -387,15 +392,20 @@ def write_comparison_table(scale: str, scale_results: dict, recipe: dict):
         if prev_map is not None:
             delta = m["best_map50_95"] - prev_map
         seq, disp, loss = MODEL_DISPLAY[model_key]
+        # 口径统一：P/R/mAP50/mAP50-95 全部取自同一个 best mAP50-95 行，
+        # 与 paper_figs._best_metrics 对齐，杜绝表内列与列来自不同 epoch 的错位
+        # （AGENTS.md §7/§8 数据真实性红线）。
+        best_idx = r["df"]["metrics/mAP50-95(B)"].idxmax()
+        best_row = r["df"].loc[best_idx]
         rows.append({
             "序号": seq,
             "模型": disp,
             "损失": loss,
             "best轮": m["best_map50_95_epoch"],
-            "P": m["final_precision"],   # final 轮 P/R 与 paper_figs 对齐口径
-            "R": m["final_recall"],
-            "mAP50": m["best_map50"],
-            "mAP50_95": m["best_map50_95"],
+            "P": best_row["metrics/precision(B)"],
+            "R": best_row["metrics/recall(B)"],
+            "mAP50": best_row["metrics/mAP50(B)"],
+            "mAP50_95": best_row["metrics/mAP50-95(B)"],
             "Δ_mAP50_95": delta,
             "Params(M)": params,
             "GFLOPs": gflops,
@@ -415,7 +425,7 @@ def write_comparison_table(scale: str, scale_results: dict, recipe: dict):
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(f"# {scale.upper()} 尺度公平消融对比\n\n")
         f.write(f"> 数据来源：`main_ablation_fair/{scale}/` 各 `stage2/results.csv`（按 best 轮 mAP50-95）\n")
-        f.write(f"> 指标读取口径：严格按 results.csv 列名（AGENTS.md §8），best 轮 = mAP50-95 最大行\n")
+        f.write(f"> 指标读取口径：严格按 results.csv 列名（AGENTS.md §8），P/R/mAP50/mAP50-95 均取自同一 best 轮（mAP50-95 最大行），与 paper_figs B 表对齐\n")
         f.write(f"> **数据真实性红线（AGENTS.md §7）：以下为真实训练结果，未编造；若 ①→④ 不严格递增，照实记录。**\n\n")
         f.write("| 序号 | 模型 | 损失 | best轮 | P | R | mAP50 | mAP50-95 | Δ(mAP50-95) | Params(M) | GFLOPs | 总ep |\n")
         f.write("|------|------|------|--------|---|---|-------|----------|-------------|-----------|--------|------|\n")
@@ -531,6 +541,7 @@ def generate_figures(scales: list, recipe: dict):
 def generate_readme(recipe: dict, all_results: dict):
     """生成 main_ablation_fair/README.md（配方摘要 + 真实指标 + 旧版差异说明）。"""
     output_root = PAPER_ROOT / recipe["output_root"]
+    output_root.mkdir(parents=True, exist_ok=True)  # 防全失败时目录缺失
     readme = output_root / "README.md"
     sh = recipe["shared"]
 
