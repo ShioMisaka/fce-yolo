@@ -459,6 +459,76 @@ def write_cross_scale_summary(all_results: dict, recipe: dict):
 
 
 # ============================================================
+# paper_figs 衔接
+# ============================================================
+
+def generate_paper_figs_config(scale: str, recipe: dict) -> Path:
+    """为指定尺度生成适配 main_ablation_fair 的 paper_figs_config YAML。
+
+    复用 paper_figs.py 的配置驱动机制，零重复造轮子。
+    """
+    output_root = PAPER_ROOT / recipe["output_root"]
+    cfg_dir = PROJECT_ROOT / "script"
+    cfg_path = cfg_dir / f"paper_figs_config_fair_{scale}.yaml"
+
+    experiments = {
+        "baseline": {
+            "dir": f"{recipe['output_root']}/{scale}/01_baseline_yolo11{scale}/stage2",
+            "display": "YOLOv11（基线）", "color": "#0BDBEB",
+            "linestyle": "--", "order": 1, "fce_module": "—", "loss": "CIoU",
+        },
+        "bifpn": {
+            "dir": f"{recipe['output_root']}/{scale}/02_bifpn_{scale}/stage2",
+            "display": "+BiFPN", "color": "#042AFF",
+            "linestyle": "-.", "order": 2, "fce_module": "F", "loss": "CIoU",
+        },
+        "fce": {
+            "dir": f"{recipe['output_root']}/{scale}/03_fce_ciou_{scale}/stage2",
+            "display": "+BiFPN+注意力", "color": "#FF6B00",
+            "linestyle": ":", "order": 3, "fce_module": "F+C", "loss": "CIoU",
+        },
+        "fce_wiou": {
+            "dir": f"{recipe['output_root']}/{scale}/04_fce_wiou_{scale}/stage2",
+            "display": "FCE（完整）", "color": "#E91E63",
+            "linestyle": "-", "order": 4, "fce_module": "F+C+E", "loss": "WIoU",
+        },
+    }
+    settings = {
+        "imgsz": recipe["shared"].get("imgsz", 1280),
+        "out_dir": f"{recipe['output_root']}/论文图表/{scale}",
+        "convergence_threshold": 0.75,
+        "class_names": ["圆形底座", "方形工件"],
+        "dpi": 300,
+    }
+    cfg = {"experiments": experiments, "settings": settings}
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        yaml.dump(cfg, f, allow_unicode=True, sort_keys=False)
+    print(f"  ✓ paper_figs 配置: {cfg_path.relative_to(PROJECT_ROOT)}")
+    return cfg_path
+
+
+def generate_figures(scales: list, recipe: dict):
+    """为每个尺度调用 paper_figs.py 出图（A/B/C/D 全套）。"""
+    print("\n" + "=" * 80)
+    print("阶段四：生成论文图表（paper_figs.py）")
+    print("=" * 80)
+    import subprocess
+    for scale in scales:
+        cfg_path = generate_paper_figs_config(scale, recipe)
+        cmd = [
+            sys.executable, "script/paper_figs.py",
+            "--config", str(cfg_path),
+        ]
+        print(f"\n▶ 出图 {scale}: {' '.join(cmd)}")
+        try:
+            subprocess.run(cmd, check=True, cwd=str(PROJECT_ROOT))
+        except subprocess.CalledProcessError as e:
+            print(f"  ⚠ {scale} 出图失败: {e}")
+        except FileNotFoundError:
+            print(f"  ⚠ paper_figs.py 未找到或子进程异常，跳过 {scale}")
+
+
+# ============================================================
 # CLI
 # ============================================================
 
@@ -519,8 +589,13 @@ def main():
             write_comparison_table(scale, all_results[scale], recipe)
     write_cross_scale_summary(all_results, recipe)
 
-    # 阶段四（出图）：后续 Task 实现
-    print("\n⚠ 出图逻辑尚未实现（见后续 Task）")
+    # 阶段四：论文图表
+    generate_figures(scales, recipe)
+
+    print("\n" + "=" * 80)
+    print("✅ 全部完成")
+    print("=" * 80)
+    print(f"结果目录: {PAPER_ROOT / recipe['output_root']}")
 
 
 if __name__ == "__main__":
