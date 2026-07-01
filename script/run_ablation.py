@@ -41,6 +41,7 @@ from script.config import (  # noqa: E402
     get_model_config,
 )
 from script.analysis import load_results, extract_metrics  # noqa: E402
+from script.trainer import YOLOv11Trainer  # noqa: E402
 
 # 论文项目根（Visual Guidance Robotic Arm/，fce-yolo 上一级）
 PAPER_ROOT = PROJECT_ROOT.parent
@@ -154,6 +155,112 @@ def print_matrix_preview(recipe: dict, scales: list, models: list):
 
 
 # ============================================================
+# IoU 校验
+# ============================================================
+
+def verify_iou_type(stage2_dir: Path, expected_iou: str) -> bool:
+    """校验训练产物 args.yaml 里记录的 iou_type 与预期一致。
+
+    防止 fce_wiou 漏加 --iou-type WIoU 退化成 CIoU（旧 bug 重现）。
+
+    Args:
+        stage2_dir: stage2 结果目录
+        expected_iou: 预期 IoU 类型字符串（'WIoU'/'CIoU' 等）
+    Returns:
+        True 一致；False 不一致或读不到
+    """
+    args_yaml = stage2_dir / "args.yaml"
+    if not args_yaml.exists():
+        return False
+    with open(args_yaml, encoding="utf-8") as f:
+        # args.yaml 是 ultralytics 写的 YAML
+        content = yaml.safe_load(f)
+    actual = str(content.get("iou_type", "")).strip()
+    if actual != expected_iou:
+        print(f"✗ IoU 校验失败: {stage2_dir.name} 期望 {expected_iou} 实际 {actual}")
+        return False
+    return True
+
+
+# ============================================================
+# 单组实验执行
+# ============================================================
+
+def get_model_dir_name(model_key: str, scale: str) -> str:
+    """根据 model_key 返回规范目录名（用于 main_ablation_fair/<scale>/0X_<name>）。"""
+    mapping = {
+        "baseline": "01_baseline_yolo11" + scale,
+        "bifpn": "02_bifpn_" + scale,
+        "fce": "03_fce_ciou_" + scale,
+        "fce_wiou": "04_fce_wiou_" + scale,
+    }
+    return mapping[model_key]
+
+
+def is_experiment_complete(scale: str, model_key: str, recipe: dict) -> bool:
+    """判断某 (scale, model) 组合是否已完成（断点续跑判定）。
+
+    判据：stage2/best.pt 存在 且 results.csv 行数 >= stage2.epochs * 0.9（容忍早停）。
+    """
+    from script.config import get_model_config
+    base_cfg = get_model_config(model_key)
+    # result_pattern 已含 _stage2 后缀（baseline 例外：原是单阶段无后缀，但我们注入了两阶段，
+    # 训练后会生成 baseline_yolo11{scale}_stage2，因此这里统一查 _stage2 目录）
+    if model_key == "baseline":
+        s2_full = Path("runs/detect") / f"baseline_yolo11{scale}_stage2"
+    else:
+        s2_full = Path("runs/detect") / base_cfg.result_pattern.format(scale=scale)
+    best_pt = s2_full / "weights" / "best.pt"
+    csv = s2_full / "results.csv"
+    if not (best_pt.exists() and csv.exists()):
+        return False
+    import pandas as pd
+    try:
+        df = pd.read_csv(csv)
+    except Exception:
+        return False
+    min_rows = int(recipe["stage2"]["epochs"] * 0.9)
+    return len(df) >= min_rows
+
+
+def run_one_experiment(model_key: str, scale: str, recipe: dict) -> dict:
+    """训练单组 (scale, model)，返回 {"stage1": Path, "stage2": Path}。
+
+    断点续跑：若已完成则直接返回路径不重训。
+    """
+    # 断点续跑
+    if is_experiment_complete(scale, model_key, recipe):
+        base_cfg0 = get_model_config(model_key)
+        s2 = Path("runs/detect") / (base_cfg0.result_pattern.format(scale=scale)
+                                    if model_key != "baseline"
+                                    else f"baseline_yolo11{scale}_stage2")
+        s1 = Path(str(s2).replace("_stage2", "_stage1"))
+        print(f"✓ 已完成，跳过 {scale}/{model_key}")
+        return {"stage1": s1, "stage2": s2}
+
+    # 公平注入
+    model_cfg = build_model_cfg_with_fairness(model_key, recipe)
+    config = build_train_config(recipe, model_key)
+
+    print(f"\n▶ 训练 {scale}/{model_key}  (iou={config.iou_type})")
+    trainer = YOLOv11Trainer(model_cfg, scale, config)
+    result = trainer.train()  # 两阶段 -> {"stage1":..., "stage2":...}
+
+    # IoU 校验（仅 fce_wiou 等非 CIoU 模型严格校验）
+    iou_override = recipe.get("iou_override", {}) or {}
+    expected_iou = iou_override.get(model_key, "CIoU")
+    if expected_iou != "CIoU":
+        s2_dir = result["stage2"]
+        if not verify_iou_type(s2_dir, expected_iou):
+            raise RuntimeError(
+                f"{model_key} 训练后 IoU 校验失败：args.yaml 未记录 {expected_iou}，"
+                f"可能退化成 CIoU，请检查配方 iou_override 与 build_train_config"
+            )
+
+    return result
+
+
+# ============================================================
 # CLI
 # ============================================================
 
@@ -180,8 +287,30 @@ def main():
     if args.dry_run:
         return
 
-    # 占位：后续 Task 实现
-    print("⚠ 训练/整理/出图逻辑尚未实现（见后续 Task）")
+    # 阶段一：训练
+    if not args.skip_train:
+        print("\n" + "=" * 80)
+        print("阶段一：训练")
+        print("=" * 80)
+        total = len(scales) * len(models)
+        i = 0
+        for scale in scales:
+            for model_key in models:
+                i += 1
+                print(f"\n[{i}/{total}] ===== {scale} / {model_key} =====")
+                try:
+                    run_one_experiment(model_key, scale, recipe)
+                except Exception as e:
+                    print(f"✗ {scale}/{model_key} 失败: {e}")
+                    failed_log = PAPER_ROOT / recipe["output_root"] / "failed.log"
+                    failed_log.parent.mkdir(parents=True, exist_ok=True)
+                    with open(failed_log, "a", encoding="utf-8") as f:
+                        f.write(f"{scale}/{model_key}: {e}\n")
+    else:
+        print("⚠ --skip-train：跳过训练")
+
+    # 阶段二/三（整理 + 出图）：后续 Task 实现
+    print("\n⚠ 整理/出图逻辑尚未实现（见后续 Task）")
 
 
 if __name__ == "__main__":
