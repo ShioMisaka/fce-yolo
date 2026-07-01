@@ -419,11 +419,13 @@ def write_comparison_table(scale: str, scale_results: dict, recipe: dict):
         f.write(f"> **数据真实性红线（AGENTS.md §7）：以下为真实训练结果，未编造；若 ①→④ 不严格递增，照实记录。**\n\n")
         f.write("| 序号 | 模型 | 损失 | best轮 | P | R | mAP50 | mAP50-95 | Δ(mAP50-95) | Params(M) | GFLOPs | 总ep |\n")
         f.write("|------|------|------|--------|---|---|-------|----------|-------------|-----------|--------|------|\n")
+
+        def fmt(x, d=4):
+            if isinstance(x, str) or x is None:
+                return "—" if x is None else str(x)
+            return f"{x:.{d}f}"
+
         for row in rows:
-            def fmt(x, d=4):
-                if isinstance(x, str) or x is None:
-                    return "—" if x is None else str(x)
-                return f"{x:.{d}f}"
             f.write(f"| {row['序号']} | {row['模型']} | {row['损失']} | {row['best轮']} | "
                     f"{fmt(row['P'])} | {fmt(row['R'])} | {fmt(row['mAP50'])} | "
                     f"{fmt(row['mAP50_95'])} | {fmt(row['Δ_mAP50_95']) if row['Δ_mAP50_95']!='' else '—'} | "
@@ -437,6 +439,7 @@ def write_cross_scale_summary(all_results: dict, recipe: dict):
     """跨尺度汇总：n/s/m 各模型 best mAP50-95 矩阵，看改进的尺度稳定性。"""
     output_root = PAPER_ROOT / recipe["output_root"]
     cmp_dir = output_root / "comparison"
+    cmp_dir.mkdir(parents=True, exist_ok=True)
     import pandas as pd
 
     rows = []
