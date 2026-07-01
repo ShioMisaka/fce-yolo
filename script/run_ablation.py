@@ -525,6 +525,52 @@ def generate_figures(scales: list, recipe: dict):
 
 
 # ============================================================
+# README 自动生成
+# ============================================================
+
+def generate_readme(recipe: dict, all_results: dict):
+    """生成 main_ablation_fair/README.md（配方摘要 + 真实指标 + 旧版差异说明）。"""
+    output_root = PAPER_ROOT / recipe["output_root"]
+    readme = output_root / "README.md"
+    sh = recipe["shared"]
+
+    lines = []
+    lines.append("# 公平消融实验（main_ablation_fair）\n")
+    lines.append("> 由 `script/run_ablation.py` 按 `script/ablation_config.yaml` 配方自动生成。\n")
+    lines.append("> **数据真实性红线（AGENTS.md §7）**：以下为真实训练结果，未编造；若 ①→④ 不严格递增，照实记录。\n\n")
+
+    lines.append("## 实验配方\n")
+    lines.append(f"- 尺度: {', '.join(recipe['scales'])}")
+    lines.append(f"- 模型: {' / '.join(MODEL_DISPLAY[m][1] for m in recipe['models'])}")
+    lines.append(f"- **全部两阶段**: stage1({recipe['stage1']['epochs']}ep, freeze={recipe['freeze']}, lr0={recipe['stage1']['lr0']}) + stage2({recipe['stage2']['epochs']}ep, lr0={recipe['stage2']['lr0']}, cos_lr={recipe['stage2']['cos_lr']}) = {recipe.get('total_epochs','?')}ep")
+    lines.append(f"- 统一变量: seed={sh.get('seed')}, deterministic={sh.get('deterministic')}, degrees={sh.get('degrees')}, optimizer={sh.get('optimizer')}, imgsz={sh.get('imgsz')}, batch={sh.get('batch')}, cache={sh.get('cache')}")
+    lines.append(f"- **Baseline 也走两阶段**（公平对齐：与 FCE 结构完全对称）")
+    lines.append(f"- IoU 映射: {recipe.get('iou_override', {})}\n")
+
+    lines.append("## 真实指标表\n")
+    for scale in recipe["scales"]:
+        if scale in all_results and all_results[scale]:
+            md_path = output_root / "comparison" / f"{scale}_comparison_summary.md"
+            lines.append(f"### {scale.upper()} 尺度")
+            lines.append(f"详见 `{md_path.relative_to(PAPER_ROOT)}`。\n")
+
+    lines.append("## 与旧版 main_ablation_m 的差异说明\n")
+    lines.append("- **旧版 `main_ablation_m/`**：变量未统一（baseline 单阶段/lr0=0.01、④ 关闭 degrees、cache/deterministic 不一致等），仅供历史参考，已归档。")
+    lines.append("- **本版 `main_ablation_fair/`**：受控对比（统一 seed/deterministic/增强/两阶段），是论文最终采用数据。\n")
+
+    lines.append("## 复现命令\n")
+    lines.append("```bash")
+    lines.append("conda activate fce-yolo")
+    lines.append("cd <项目根>/fce-yolo")
+    lines.append("python script/run_ablation.py --recipe script/ablation_config.yaml")
+    lines.append("```\n")
+
+    with open(readme, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    print(f"  ✓ {readme.relative_to(PAPER_ROOT)}")
+
+
+# ============================================================
 # CLI
 # ============================================================
 
@@ -584,6 +630,10 @@ def main():
         if scale in all_results and all_results[scale]:
             write_comparison_table(scale, all_results[scale], recipe)
     write_cross_scale_summary(all_results, recipe)
+
+    # 生成 README
+    print("\n▶ 生成 README")
+    generate_readme(recipe, all_results)
 
     # 阶段四：论文图表
     generate_figures(scales, recipe)
