@@ -202,13 +202,7 @@ def is_experiment_complete(scale: str, model_key: str, recipe: dict) -> bool:
 
     判据：stage2/best.pt 存在 且 results.csv 行数 >= stage2.epochs * 0.9（容忍早停）。
     """
-    base_cfg = get_model_config(model_key)  # 模块级已导入
-    # result_pattern 已含 _stage2 后缀（baseline 例外：原是单阶段无后缀，但我们注入了两阶段，
-    # 训练后会生成 baseline_yolo11{scale}_stage2，因此这里统一查 _stage2 目录）
-    if model_key == "baseline":
-        s2_full = Path("runs/detect") / f"baseline_yolo11{scale}_stage2"
-    else:
-        s2_full = Path("runs/detect") / base_cfg.result_pattern.format(scale=scale)
+    s2_full = _stage2_run_dir(model_key, scale)
     best_pt = s2_full / "weights" / "best.pt"
     csv = s2_full / "results.csv"
     if not (best_pt.exists() and csv.exists()):
@@ -229,10 +223,7 @@ def run_one_experiment(model_key: str, scale: str, recipe: dict) -> dict:
     """
     # 断点续跑
     if is_experiment_complete(scale, model_key, recipe):
-        base_cfg0 = get_model_config(model_key)
-        s2 = Path("runs/detect") / (base_cfg0.result_pattern.format(scale=scale)
-                                    if model_key != "baseline"
-                                    else f"baseline_yolo11{scale}_stage2")
+        s2 = _stage2_run_dir(model_key, scale)
         s1 = Path(str(s2).replace("_stage2", "_stage1"))
         print(f"✓ 已完成，跳过 {scale}/{model_key}")
         return {"stage1": s1, "stage2": s2}
@@ -257,6 +248,211 @@ def run_one_experiment(model_key: str, scale: str, recipe: dict) -> dict:
             )
 
     return result
+
+
+# ============================================================
+# 结果收集与归档
+# ============================================================
+
+def _stage2_run_dir(model_key: str, scale: str) -> Path:
+    """返回 runs/detect 下某 (scale, model) 的 stage2 目录路径。
+
+    统一 baseline 特例（其 result_pattern 无 _stage2 后缀，但公平注入后训练会生成
+    baseline_yolo11{scale}_stage2）。集中在此，避免多处重复。
+    """
+    if model_key == "baseline":
+        return Path("runs/detect") / f"baseline_yolo11{scale}_stage2"
+    base_cfg = get_model_config(model_key)
+    return Path("runs/detect") / base_cfg.result_pattern.format(scale=scale)
+
+
+def archive_one(scale: str, model_key: str, recipe: dict):
+    """把 runs/detect/<exp>_stage{1,2} 复制到 main_ablation_fair/<scale>/0X_<name>/。
+
+    默认仅复制 stage2（copy_stage1: false）；目录自包含、可独立归档。
+    """
+    import shutil
+    output_root = PAPER_ROOT / recipe["output_root"]
+    scale_dir = output_root / scale
+    model_dir_name = get_model_dir_name(model_key, scale)
+    dst_model_dir = scale_dir / model_dir_name
+    scale_dir.mkdir(parents=True, exist_ok=True)
+
+    s2_src = _stage2_run_dir(model_key, scale)
+    s1_src = Path(str(s2_src).replace("_stage2", "_stage1"))
+
+    copy_stage1 = recipe.get("copy_stage1", False)
+
+    # 复制 stage2
+    dst_s2 = dst_model_dir / "stage2"
+    if s2_src.exists():
+        if dst_s2.exists():
+            shutil.rmtree(dst_s2)
+        shutil.copytree(str(s2_src), str(dst_s2))
+        print(f"  ✓ stage2 -> {dst_s2.relative_to(PAPER_ROOT)}")
+    else:
+        print(f"  ⚠ stage2 源不存在: {s2_src}")
+
+    # 可选复制 stage1
+    if copy_stage1 and s1_src.exists():
+        dst_s1 = dst_model_dir / "stage1"
+        if dst_s1.exists():
+            shutil.rmtree(dst_s1)
+        shutil.copytree(str(s1_src), str(dst_s1))
+        print(f"  ✓ stage1 -> {dst_s1.relative_to(PAPER_ROOT)}")
+
+    return dst_s2
+
+
+def collect_results(scales: list, models: list, recipe: dict) -> dict:
+    """遍历 (scale, model)，复制结果并汇总 results.csv 路径。
+
+    Returns:
+        {scale: {model_key: {"stage2_dir": Path, "csv": Path, "df": DataFrame, "metrics": dict}}}
+    """
+    print("\n" + "=" * 80)
+    print("阶段二：整理训练结果")
+    print("=" * 80)
+
+    all_results = {}
+    for scale in scales:
+        all_results[scale] = {}
+        for model_key in models:
+            dst_s2 = archive_one(scale, model_key, recipe)
+            csv = dst_s2 / "results.csv"
+            if not csv.exists():
+                print(f"  ⚠ 缺 results.csv: {csv}")
+                continue
+            df = load_results(csv)
+            all_results[scale][model_key] = {
+                "stage2_dir": dst_s2,
+                "csv": csv,
+                "df": df,
+                "metrics": extract_metrics(df),
+            }
+    return all_results
+
+
+# ============================================================
+# 对比表生成
+# ============================================================
+
+# 模型展示名 + 消融序号（与 paper_figs_config 对齐）
+MODEL_DISPLAY = {
+    "baseline":   ("①", "YOLOv11（基线）",   "CIoU"),
+    "bifpn":      ("②", "+BiFPN",            "CIoU"),
+    "fce":        ("③", "+BiFPN+注意力",     "CIoU"),
+    "fce_wiou":   ("④", "FCE（+WIoU）",      "WIoU"),
+}
+
+
+def compute_params_gflops(best_pt: Path, imgsz: int = 1280) -> tuple:
+    """从 best.pt 真实计算 Params/GFLOPs。
+
+    失败返回 (None, None)。
+    """
+    try:
+        from ultralytics import YOLO
+        m = YOLO(str(best_pt))
+        params = sum(p.numel() for p in m.model.parameters())
+        try:
+            from ultralytics.utils.torch_utils import get_flops
+            flops = get_flops(m.model, imgsz=imgsz)
+        except Exception:
+            flops = None
+        return params / 1e6, flops
+    except Exception as e:
+        print(f"  ⚠ Params/GFLOPs 计算失败 {best_pt.name}: {e}")
+        return None, None
+
+
+def write_comparison_table(scale: str, scale_results: dict, recipe: dict):
+    """为单尺度生成对比表 CSV + MD（按 best 指标，含 Δ 列）。"""
+    output_root = PAPER_ROOT / recipe["output_root"]
+    cmp_dir = output_root / "comparison"
+    cmp_dir.mkdir(parents=True, exist_ok=True)
+
+    rows = []
+    prev_map = None
+    for model_key in ["baseline", "bifpn", "fce", "fce_wiou"]:
+        if model_key not in scale_results:
+            continue
+        r = scale_results[model_key]
+        m = r["metrics"]
+        best_pt = r["stage2_dir"] / "weights" / "best.pt"
+        params, gflops = (None, None)
+        if best_pt.exists():
+            params, gflops = compute_params_gflops(best_pt, recipe["shared"].get("imgsz", 1280))
+        delta = ""
+        if prev_map is not None:
+            delta = m["best_map50_95"] - prev_map
+        seq, disp, loss = MODEL_DISPLAY[model_key]
+        rows.append({
+            "序号": seq,
+            "模型": disp,
+            "损失": loss,
+            "best轮": m["best_map50_95_epoch"],
+            "P": m["final_precision"],   # final 轮 P/R 与 paper_figs 对齐口径
+            "R": m["final_recall"],
+            "mAP50": m["best_map50"],
+            "mAP50_95": m["best_map50_95"],
+            "Δ_mAP50_95": delta,
+            "Params(M)": params,
+            "GFLOPs": gflops,
+            "总ep": recipe["stage1"]["epochs"] + recipe["stage2"]["epochs"],
+        })
+        prev_map = m["best_map50_95"]
+
+    # CSV
+    import pandas as pd
+    df = pd.DataFrame(rows)
+    csv_path = cmp_dir / f"{scale}_comparison_summary.csv"
+    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+    print(f"  ✓ {csv_path.relative_to(PAPER_ROOT)}")
+
+    # MD（含"如实报告"红线声明）
+    md_path = cmp_dir / f"{scale}_comparison_summary.md"
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(f"# {scale.upper()} 尺度公平消融对比\n\n")
+        f.write(f"> 数据来源：`main_ablation_fair/{scale}/` 各 `stage2/results.csv`（按 best 轮 mAP50-95）\n")
+        f.write(f"> 指标读取口径：严格按 results.csv 列名（AGENTS.md §8），best 轮 = mAP50-95 最大行\n")
+        f.write(f"> **数据真实性红线（AGENTS.md §7）：以下为真实训练结果，未编造；若 ①→④ 不严格递增，照实记录。**\n\n")
+        f.write("| 序号 | 模型 | 损失 | best轮 | P | R | mAP50 | mAP50-95 | Δ(mAP50-95) | Params(M) | GFLOPs | 总ep |\n")
+        f.write("|------|------|------|--------|---|---|-------|----------|-------------|-----------|--------|------|\n")
+        for row in rows:
+            def fmt(x, d=4):
+                if isinstance(x, str) or x is None:
+                    return "—" if x is None else str(x)
+                return f"{x:.{d}f}"
+            f.write(f"| {row['序号']} | {row['模型']} | {row['损失']} | {row['best轮']} | "
+                    f"{fmt(row['P'])} | {fmt(row['R'])} | {fmt(row['mAP50'])} | "
+                    f"{fmt(row['mAP50_95'])} | {fmt(row['Δ_mAP50_95']) if row['Δ_mAP50_95']!='' else '—'} | "
+                    f"{fmt(row['Params(M)'],2) if row['Params(M)'] else 'N/A'} | "
+                    f"{fmt(row['GFLOPs'],1) if row['GFLOPs'] else 'N/A'} | {row['总ep']} |\n")
+    print(f"  ✓ {md_path.relative_to(PAPER_ROOT)}")
+    return df
+
+
+def write_cross_scale_summary(all_results: dict, recipe: dict):
+    """跨尺度汇总：n/s/m 各模型 best mAP50-95 矩阵，看改进的尺度稳定性。"""
+    output_root = PAPER_ROOT / recipe["output_root"]
+    cmp_dir = output_root / "comparison"
+    import pandas as pd
+
+    rows = []
+    for model_key in ["baseline", "bifpn", "fce", "fce_wiou"]:
+        row = {"模型": MODEL_DISPLAY[model_key][1]}
+        for scale in all_results.keys():
+            if model_key in all_results[scale]:
+                row[f"{scale}_mAP50_95"] = all_results[scale][model_key]["metrics"]["best_map50_95"]
+            else:
+                row[f"{scale}_mAP50_95"] = None
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    csv = cmp_dir / "cross_scale_summary.csv"
+    df.to_csv(csv, index=False, encoding="utf-8-sig")
+    print(f"  ✓ {csv.relative_to(PAPER_ROOT)}")
+    return df
 
 
 # ============================================================
@@ -308,8 +504,20 @@ def main():
     else:
         print("⚠ --skip-train：跳过训练")
 
-    # 阶段二/三（整理 + 出图）：后续 Task 实现
-    print("\n⚠ 整理/出图逻辑尚未实现（见后续 Task）")
+    # 阶段二：整理结果
+    all_results = collect_results(scales, models, recipe)
+
+    # 阶段三：对比表
+    print("\n" + "=" * 80)
+    print("阶段三：生成对比表")
+    print("=" * 80)
+    for scale in scales:
+        if scale in all_results and all_results[scale]:
+            write_comparison_table(scale, all_results[scale], recipe)
+    write_cross_scale_summary(all_results, recipe)
+
+    # 阶段四（出图）：后续 Task 实现
+    print("\n⚠ 出图逻辑尚未实现（见后续 Task）")
 
 
 if __name__ == "__main__":
