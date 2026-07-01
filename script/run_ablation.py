@@ -202,8 +202,7 @@ def is_experiment_complete(scale: str, model_key: str, recipe: dict) -> bool:
 
     判据：stage2/best.pt 存在 且 results.csv 行数 >= stage2.epochs * 0.9（容忍早停）。
     """
-    from script.config import get_model_config
-    base_cfg = get_model_config(model_key)
+    base_cfg = get_model_config(model_key)  # 模块级已导入
     # result_pattern 已含 _stage2 后缀（baseline 例外：原是单阶段无后缀，但我们注入了两阶段，
     # 训练后会生成 baseline_yolo11{scale}_stage2，因此这里统一查 _stage2 目录）
     if model_key == "baseline":
