@@ -466,33 +466,29 @@ def generate_paper_figs_config(scale: str, recipe: dict) -> Path:
     """为指定尺度生成适配 main_ablation_fair 的 paper_figs_config YAML。
 
     复用 paper_figs.py 的配置驱动机制，零重复造轮子。
+    display/loss 从 MODEL_DISPLAY 派生（单一事实来源，保证表与图例标签一致）；
+    color/linestyle/fce_module 为 paper_figs 渲染专用配置。
     """
-    output_root = PAPER_ROOT / recipe["output_root"]
     cfg_dir = PROJECT_ROOT / "script"
     cfg_path = cfg_dir / f"paper_figs_config_fair_{scale}.yaml"
 
-    experiments = {
-        "baseline": {
-            "dir": f"{recipe['output_root']}/{scale}/01_baseline_yolo11{scale}/stage2",
-            "display": "YOLOv11（基线）", "color": "#0BDBEB",
-            "linestyle": "--", "order": 1, "fce_module": "—", "loss": "CIoU",
-        },
-        "bifpn": {
-            "dir": f"{recipe['output_root']}/{scale}/02_bifpn_{scale}/stage2",
-            "display": "+BiFPN", "color": "#042AFF",
-            "linestyle": "-.", "order": 2, "fce_module": "F", "loss": "CIoU",
-        },
-        "fce": {
-            "dir": f"{recipe['output_root']}/{scale}/03_fce_ciou_{scale}/stage2",
-            "display": "+BiFPN+注意力", "color": "#FF6B00",
-            "linestyle": ":", "order": 3, "fce_module": "F+C", "loss": "CIoU",
-        },
-        "fce_wiou": {
-            "dir": f"{recipe['output_root']}/{scale}/04_fce_wiou_{scale}/stage2",
-            "display": "FCE（完整）", "color": "#E91E63",
-            "linestyle": "-", "order": 4, "fce_module": "F+C+E", "loss": "WIoU",
-        },
+    # 渲染专用配置（color/linestyle/fce_module 不在 MODEL_DISPLAY 中，此处独立维护）
+    _render = {
+        "baseline":  {"color": "#0BDBEB", "linestyle": "--",  "fce_module": "—"},
+        "bifpn":     {"color": "#042AFF", "linestyle": "-.",  "fce_module": "F"},
+        "fce":       {"color": "#FF6B00", "linestyle": ":",   "fce_module": "F+C"},
+        "fce_wiou":  {"color": "#E91E63", "linestyle": "-",   "fce_module": "F+C+E"},
     }
+    experiments = {}
+    for order, key in enumerate(["baseline", "bifpn", "fce", "fce_wiou"], start=1):
+        seq, display, loss = MODEL_DISPLAY[key]
+        experiments[key] = {
+            "dir": f"{recipe['output_root']}/{scale}/{get_model_dir_name(key, scale)}/stage2",
+            "display": display,
+            "loss": loss,
+            "order": order,
+            **_render[key],
+        }
     settings = {
         "imgsz": recipe["shared"].get("imgsz", 1280),
         "out_dir": f"{recipe['output_root']}/论文图表/{scale}",
