@@ -105,10 +105,12 @@ def build_model_cfg_with_fairness(model_key: str, recipe: dict) -> ModelConfig:
 
 
 def build_train_config(recipe: dict, model_key: str) -> TrainConfig:
-    """从配方的 shared 字段构建 TrainConfig，并按 iou_override 设置 iou_type。
+    """从配方构建 TrainConfig（含 stage1/stage2），并按 iou_override 设置 iou_type。
 
-    shared 中 TrainConfig 认识的字段直接填入；不认识的（seed/deterministic/degrees
-    等共享超参）通过 extra_args 注入，由 to_dict() 展开到 train() kwargs。
+    - shared 中 TrainConfig 认识的字段直接填入；不认识的（seed/deterministic/degrees
+      等共享超参）通过 extra_args 注入，由 to_dict() 展开到 train() kwargs。
+    - stage1/stage2 必须写入 TrainConfig：trainer._build_train_args 从 self.config.stage1/stage2
+      取阶段配置（而非从 model_cfg），所以这里不注入会导致 asdict(None) 崩溃。
     """
     shared = dict(recipe["shared"])
     iou_override = recipe.get("iou_override", {}) or {}
@@ -121,6 +123,9 @@ def build_train_config(recipe: dict, model_key: str) -> TrainConfig:
     config = TrainConfig(**recognized)
     config.iou_type = iou_type
     config.extra_args = extra
+    # 关键：trainer 从 config.stage1/stage2 取阶段配置，必须用配方的 StageConfig 覆盖默认值
+    config.stage1 = StageConfig(**recipe["stage1"])
+    config.stage2 = StageConfig(**recipe["stage2"])
     return config
 
 
