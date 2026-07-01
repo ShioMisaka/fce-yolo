@@ -1,0 +1,68 @@
+# ============================================================
+# 论文图表生成配置（FCE-YOLOv11 消融实验）
+# ============================================================
+# 用途：描述"哪些实验参与对比"及其显示属性。
+# 扩展性：未来重做实验 / 换尺度 / 加新对比组时，只需改本文件，无需动代码。
+#
+# 路径约定：dir 相对「项目根目录」（Visual Guidance Robotic Arm/），
+#           脚本会自动拼接 PROJECT_ROOT，换机器无需改路径。
+# ============================================================
+
+# ---- 实验组定义 ----
+# 每个 key 对应一个模型；order 决定消融递进顺序（①②③④）。
+# 重做某实验时：把 dir 指向新目录即可；新增对比：复制一个 key 块。
+experiments:
+  baseline:
+    dir: 实验/论文正式实验/main_ablation_m/01_baseline_yolo11m
+    display: "YOLOv11（基线）"
+    color: "#0BDBEB"        # 青
+    linestyle: "--"
+    order: 1
+    fce_module: "—"         # 消融表用：对应 FCE 哪个模块
+    loss: "CIoU"
+
+  bifpn:
+    dir: 实验/论文正式实验/main_ablation_m/02_bifpn_m
+    display: "+BiFPN"
+    color: "#042AFF"        # 蓝
+    linestyle: "-."
+    order: 2
+    fce_module: "F"
+    loss: "CIoU"
+
+  fce:
+    dir: 实验/论文正式实验/main_ablation_m/03_fce_m_ciou
+    display: "+BiFPN+注意力"
+    color: "#FF6B00"        # 橙
+    linestyle: ":"
+    order: 3
+    fce_module: "F+C"
+    loss: "CIoU"
+
+  fce_wiou:
+    dir: 实验/论文正式实验/main_ablation_m/04_fce_m_wiou
+    display: "FCE（完整）"
+    color: "#E91E63"        # 品红（WIoU 突出）
+    linestyle: "-"
+    order: 4
+    fce_module: "F+C+E"
+    loss: "WIoU"
+
+# ---- 全局设置 ----
+settings:
+  # GFLOPs 计算用输入尺寸
+  imgsz: 1280
+
+  # 所有图表的产出根目录（相对项目根）。图就放这里。
+  out_dir: 实验/论文正式实验/论文图表
+
+  # 收敛速度图：mAP50-95 首次达到该阈值所需轮数
+  convergence_threshold: 0.75
+
+  # 数据集类别名（混淆矩阵 / 检测图中文标注用）
+  class_names:
+    - "圆形底座"
+    - "方形工件"
+
+  # 图表分辨率
+  dpi: 300
