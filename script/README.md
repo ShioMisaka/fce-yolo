@@ -11,6 +11,8 @@ script/
 ├── analysis.py  # 对比分析（指标提取、曲线绘制、结果对比）
 ├── train.py     # 统一训练 CLI
 ├── compare.py   # 统一对比 CLI
+├── run_ablation.py  # 公平消融实验编排器（配方驱动，一键训练 4 模型×多尺度）
+├── ablation_config.yaml  # 公平消融配方（统一变量：seed/stage/增强等）
 └── test.py      # 配置测试
 ```
 
@@ -25,6 +27,11 @@ python script/train.py fce --scale s
 
 # 多模型对比
 python script/compare.py --models baseline fce --scale s
+
+# 公平消融实验（全统一变量，4 模型 × n/s/m，全部两阶段含 baseline）
+python script/run_ablation.py --dry-run            # 预览矩阵
+python script/run_ablation.py                      # 跑全配方
+python script/run_ablation.py --scales m           # 只跑 m
 ```
 
 ## 训练 CLI
@@ -180,3 +187,25 @@ plot_comparison_curves(
 2. 在 `script/config.py` 的 `MODEL_CONFIGS` 中添加配置
 3. 设置 `stage1` 启用两阶段，或不设置保持单阶段
 4. `python script/train.py your_model --scale n --test` 验证
+
+## 公平消融实验（run_ablation.py）
+
+`run_ablation.py` 是实验编排器：按 `ablation_config.yaml` 配方一键训练 4 类模型 × 多尺度，
+**强制全部两阶段（含 baseline）** 实现公平对齐，断点续跑，自动整理结果 + 对比表 + 论文图表。
+
+**配方 `ablation_config.yaml` 是唯一输入**——重做实验只改 YAML，不改代码。
+
+关键设计：
+- **公平注入**：运行时用 `dataclasses.replace` 给 baseline 注入 `stage1+freeze`，与 FCE 结构对称
+- **统一变量**：seed=42 + deterministic + degrees=10 + 两阶段 50+250=300ep（4 组完全相同）
+- **数据真实性红线**：对比表如实填真实 best 指标，不保证 ①<②<③<④ 严格递增
+
+用法：
+```bash
+python script/run_ablation.py --dry-run                # 仅预览实验矩阵
+python script/run_ablation.py                          # 跑全配方
+python script/run_ablation.py --scales m --models baseline fce   # 子集
+python script/run_ablation.py --skip-train             # 仅整理已有结果+出图
+```
+
+产出：`实验/论文正式实验/main_ablation_fair/<scale>/0X_*/stage2/` + `comparison/` + `论文图表/`。
