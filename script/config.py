@@ -57,6 +57,10 @@ class TrainConfig:
     verbose: bool = True
     plots: bool = True
 
+    # 额外的 ultralytics 训练参数（如 seed/deterministic/degrees/hsv_h 等共享超参，
+    # 由调用方按需注入；to_dict() 会展开到 train() 的 kwargs 中）
+    extra_args: Dict = field(default_factory=dict)
+
     # 两阶段配置（stage1=None 表示单阶段训练）
     stage1: Optional[StageConfig] = None
     stage2: StageConfig = field(default_factory=StageConfig)
@@ -82,6 +86,8 @@ class TrainConfig:
             "verbose": self.verbose,
             "plots": self.plots,
         }
+        # 展开额外的共享训练参数（seed/deterministic/degrees 等）
+        d.update(self.extra_args)
         return d
 
 

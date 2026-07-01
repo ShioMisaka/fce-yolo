@@ -65,7 +65,7 @@ def load_recipe(yaml_path: Path) -> dict:
         recipe = yaml.safe_load(f)
 
     # 必需字段校验
-    required = ["shared", "stage1", "stage2", "freeze", "scales", "models"]
+    required = ["shared", "stage1", "stage2", "freeze", "scales", "models", "output_root"]
     missing = [k for k in required if k not in recipe]
     if missing:
         raise ValueError(f"配方缺少必需字段: {missing}")
@@ -95,29 +95,31 @@ def build_model_cfg_with_fairness(model_key: str, recipe: dict) -> ModelConfig:
     - 不改 config.py 全局 MODEL_CONFIGS，返回新对象
     """
     base_cfg = get_model_config(model_key)
-    new_cfg = replace(
+    return replace(
         base_cfg,
         stage1=StageConfig(**recipe["stage1"]),
         stage2=StageConfig(**recipe["stage2"]),
         freeze=recipe["freeze"],
     )
-    return new_cfg
 
 
 def build_train_config(recipe: dict, model_key: str) -> TrainConfig:
-    """从配方的 shared 字段构建 TrainConfig，并按 iou_override 设置 iou_type。"""
+    """从配方的 shared 字段构建 TrainConfig，并按 iou_override 设置 iou_type。
+
+    shared 中 TrainConfig 认识的字段直接填入；不认识的（seed/deterministic/degrees
+    等共享超参）通过 extra_args 注入，由 to_dict() 展开到 train() kwargs。
+    """
     shared = dict(recipe["shared"])
     iou_override = recipe.get("iou_override", {}) or {}
     iou_type = iou_override.get(model_key, "CIoU")
 
-    # shared 里可能有 TrainConfig 不认识的字段（degrees/seed/deterministic）
-    # 这些通过 to_dict 额外注入，先把 TrainConfig 认识的字段挑出来
-    train_fields = {f.name for f in TrainConfig.__dataclass_fields__.values()}
+    train_fields = {f for f in TrainConfig.__dataclass_fields__}
     recognized = {k: v for k, v in shared.items() if k in train_fields}
-    # cache: 配方里 'ram'/'true' 是字符串，TrainConfig.cache 是 str 字段
-    # to_dict 会把 "false" 转 False，其它原样传，ultralytics 会处理 'ram'/'true'
+    extra = {k: v for k, v in shared.items() if k not in train_fields}
+
     config = TrainConfig(**recognized)
     config.iou_type = iou_type
+    config.extra_args = extra
     return config
 
 
@@ -156,16 +158,16 @@ def print_matrix_preview(recipe: dict, scales: list, models: list):
 # ============================================================
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         description="公平消融实验编排器（一键训练 4 模型 × 多尺度）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--recipe", type=Path, default=DEFAULT_RECIPE, help="配方 YAML 路径")
-    p.add_argument("--scales", type=str, nargs="+", default=None, help="覆盖配方的 scales")
-    p.add_argument("--models", type=str, nargs="+", default=None, help="覆盖配方的 models")
-    p.add_argument("--skip-train", action="store_true", help="跳过训练，仅整理+出图")
-    p.add_argument("--dry-run", action="store_true", help="仅打印矩阵，不训练")
-    return p.parse_args()
+    parser.add_argument("--recipe", type=Path, default=DEFAULT_RECIPE, help="配方 YAML 路径")
+    parser.add_argument("--scales", type=str, nargs="+", default=None, help="覆盖配方的 scales")
+    parser.add_argument("--models", type=str, nargs="+", default=None, help="覆盖配方的 models")
+    parser.add_argument("--skip-train", action="store_true", help="跳过训练，仅整理+出图")
+    parser.add_argument("--dry-run", action="store_true", help="仅打印矩阵，不训练")
+    return parser.parse_args()
 
 
 def main():
