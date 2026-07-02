@@ -6,25 +6,28 @@
 #
 # 路径约定：dir 相对「项目根目录」（Visual Guidance Robotic Arm/），
 #           脚本会自动拼接 PROJECT_ROOT，换机器无需改路径。
+#
+# 注意：display / class_names 已英文化，与 paper_figs.py 的英文输出保持一致
+#       （Linux 工作站无 CJK 字体，中文会渲染成方框）。
 # ============================================================
 
 # ---- 实验组定义 ----
-# 每个 key 对应一个模型；order 决定消融递进顺序（①②③④）。
+# 每个 key 对应一个模型；order 决定消融递进顺序（M1/M2/M3/M4）。
 # 重做某实验时：把 dir 指向新目录即可；新增对比：复制一个 key 块。
 experiments:
   baseline:
     dir: 实验/论文正式实验/main_ablation_m/01_baseline_yolo11m
-    display: "YOLOv11（基线）"
-    color: "#0BDBEB"        # 青
+    display: "YOLOv11 (baseline)"
+    color: "#0BDBEB"        # cyan
     linestyle: "--"
     order: 1
-    fce_module: "—"         # 消融表用：对应 FCE 哪个模块
+    fce_module: "-"         # 消融表用：对应 FCE 哪个模块
     loss: "CIoU"
 
   bifpn:
     dir: 实验/论文正式实验/main_ablation_m/02_bifpn_m
     display: "+BiFPN"
-    color: "#042AFF"        # 蓝
+    color: "#042AFF"        # blue
     linestyle: "-."
     order: 2
     fce_module: "F"
@@ -32,8 +35,8 @@ experiments:
 
   fce:
     dir: 实验/论文正式实验/main_ablation_m/03_fce_m_ciou
-    display: "+BiFPN+注意力"
-    color: "#FF6B00"        # 橙
+    display: "+BiFPN+Attn"
+    color: "#FF6B00"        # orange
     linestyle: ":"
     order: 3
     fce_module: "F+C"
@@ -41,8 +44,8 @@ experiments:
 
   fce_wiou:
     dir: 实验/论文正式实验/main_ablation_m/04_fce_m_wiou
-    display: "FCE（完整）"
-    color: "#E91E63"        # 品红（WIoU 突出）
+    display: "FCE (+WIoU)"
+    color: "#E91E63"        # magenta (WIoU highlighted)
     linestyle: "-"
     order: 4
     fce_module: "F+C+E"
@@ -59,10 +62,11 @@ settings:
   # 收敛速度图：mAP50-95 首次达到该阈值所需轮数
   convergence_threshold: 0.75
 
-  # 数据集类别名（混淆矩阵 / 检测图中文标注用）
+  # 数据集类别名（混淆矩阵 / 检测图标注用）
+  # 英文化：Linux 无 CJK 字体时也能正常渲染
   class_names:
-    - "圆形底座"
-    - "方形工件"
+    - "round_base"
+    - "square_part"
 
   # 图表分辨率
   dpi: 300

@@ -1,26 +1,33 @@
 """
-论文图表生成脚本（FCE-YOLOv11 消融实验）
+Paper figure generator for FCE-YOLOv11 ablation experiments.
 
-基于 paper_figs_config.yaml 描述的实验组，从各模型 results.csv 读取真实数据，
-产出多维度的论文级对比图表，凸显 ①→②→③→④ 的递进优化效果。
+Reads experiment groups described in paper_figs_config.yaml, loads results.csv
+of each model, and produces publication-grade comparison figures highlighting
+the progressive improvement M1 -> M2 -> M3 -> M4.
 
-产出 8 类（默认全部生成，可用 --only 选择）：
-  A. 训练曲线对比（metrics 4合1 + loss 4合1）
-  B. 消融分析（B1 提升柱状图 / B2 性能雷达图 / B3 收敛速度 / B_消融表 CSV+MD）
-  C. 检测可视化对比（val_batch0 GT + 四模型 pred 竖排拼图）
-  D. PR/F1/混淆矩阵 中文化拼接
+Produces 4 categories (all by default; use --only to select):
+  A. Training curves (metrics 4-panel + loss 4-panel)
+  B. Ablation analysis (B1 gain bar / B2 performance radar / B3 convergence /
+     B ablation table CSV+MD)
+  C. Detection visualization (val_batch0 GT + 4-model predictions, stacked)
+  D. PR / F1 / confusion matrix montage
 
-扩展性：所有"哪些实验/配色/路径"由 YAML 配置；重做实验只需改 YAML，不改代码。
+Extensibility: "which experiments / colors / paths" are all driven by YAML;
+re-running an experiment only requires editing the YAML, never the code.
 
-用法（在 fce-yolo 环境下）：
+Usage (under the fce-yolo conda env):
     conda activate fce-yolo
-    cd <项目根>/fce-yolo
-    python script/paper_figs.py                # 产出全部
-    python script/paper_figs.py --only A,B     # 仅产出 A、B
-    python script/paper_figs.py --config script/xxx.yaml   # 指定其他配置
+    cd <project_root>/fce-yolo
+    python script/paper_figs.py                       # produce all
+    python script/paper_figs.py --only A,B            # produce A and B only
+    python script/paper_figs.py --config script/xxx.yaml   # custom config
 
-数据真实性红线：所有数值严格来自 results.csv 的 best 轮（idxmax mAP50-95），
-绝不编造。GFLOPs/Params 从 best.pt 真实计算，失败降级为 N/A。
+Data integrity: all numbers strictly come from the best epoch (idxmax of
+mAP50-95) of results.csv; never fabricated. GFLOPs/Params are computed from
+best.pt on the fly, falling back to N/A on failure.
+
+NOTE: All output file/dir names and in-figure text are English-only so the
+script runs on both Windows (local) and Linux (workstation, no CJK fonts).
 """
 
 import argparse
@@ -77,29 +84,42 @@ def load_all_dfs(exp_list):
     for e in exp_list:
         csv = e["abs_dir"] / "results.csv"
         if not csv.exists():
-            print(f"⚠ 缺 results.csv: {csv}，跳过 {e['key']}")
+            print(f"warn: results.csv missing: {csv}, skipping {e['key']}")
             continue
         dfs[e["key"]] = load_results(csv)
     return dfs
 
 
 # ============================================================
-# 中文字体配置
+# Font configuration (cross-platform, English-only output)
 # ============================================================
 
 def setup_cn_font(dpi=300):
-    """配置 matplotlib 中文字体，避免中文渲染成方框。"""
+    """Configure matplotlib fonts for cross-platform rendering.
+
+    In-figure text is English-only now, so any sans-serif font works. We still
+    prefer CJK-capable fonts when present (harmless), but DejaVu Sans (matplotlib
+    default on Linux) is the guaranteed fallback. This lets the script run on a
+    Linux workstation without any CJK font installed.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib import font_manager
 
-    candidates = ["Microsoft YaHei", "SimHei", "Microsoft YaHei UI", "SimSun", "KaiTi"]
+    # Order: prefer CJK-capable (in case of mixed content), fall back to DejaVu
+    # (ships with matplotlib on every platform).
+    candidates = [
+        "Microsoft YaHei", "SimHei", "Microsoft YaHei UI", "SimSun",  # Windows
+        "Noto Sans CJK SC", "Noto Sans CJK", "WenQuanYi Zen Hei",     # Linux
+        "PingFang SC", "Heiti SC",                                     # macOS
+        "DejaVu Sans",                                                 # universal fallback
+    ]
     available = {f.name for f in font_manager.fontManager.ttflist}
-    chosen = next((c for c in candidates if c in available), None)
+    chosen = next((c for c in candidates if c in available), "DejaVu Sans")
 
     plt.rcParams.update({
-        "font.sans-serif": [chosen] if chosen else candidates,
+        "font.sans-serif": [chosen] + candidates,
         "font.family": "sans-serif",
         "axes.unicode_minus": False,
         "font.size": 11,
@@ -110,10 +130,7 @@ def setup_cn_font(dpi=300):
         "figure.dpi": 150,
         "savefig.dpi": dpi,
     })
-    if chosen:
-        print(f"✓ 中文字体: {chosen}")
-    else:
-        print("⚠ 未找到候选中文字体，中文可能显示为方框。")
+    print(f"font: {chosen}")
     return plt
 
 
@@ -122,7 +139,7 @@ def setup_cn_font(dpi=300):
 # ============================================================
 
 def _ordered(dfs, exp_list):
-    """从 dfs 中按 exp_list 的 order 顺序取出 (key, df, meta)。"""
+    """Return items from dfs in exp_list order as (key, df, meta)."""
     out = []
     for e in exp_list:
         if e["key"] in dfs:
@@ -131,13 +148,58 @@ def _ordered(dfs, exp_list):
 
 
 # ============================================================
-# 产出 A：训练曲线对比（metrics 4合1 + loss 4合1）
+# Cross-platform PIL font resolution
+# ============================================================
+
+def _load_pil_font(size=28, bold=False):
+    """Find a usable TrueType font for PIL across Windows/Linux/macOS.
+
+    In-figure text is English-only, so any TTF works. We probe common per-OS
+    font paths and fall back to PIL's default bitmap font (always available).
+    """
+    from PIL import ImageFont
+
+    # Bold-biased file names first when bold=True; regular-biased first otherwise.
+    win_bold = ["msyhbd.ttc", "segoeuib.ttf", "arialbd.ttf"]
+    win_reg = ["msyh.ttc", "segoeui.ttf", "arial.ttf", "simhei.ttf"]
+    linux_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    ]
+    mac_paths = [
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/Library/Fonts/Arial.ttf",
+    ]
+
+    if sys.platform.startswith("win"):
+        base = Path("C:/Windows/Fonts")
+        prefer = (win_bold if bold else []) + (win_reg if not bold else []) + \
+                 (win_reg if bold else []) + (win_bold if not bold else [])
+        candidates = [str(base / f) for f in prefer]
+    elif sys.platform == "darwin":
+        candidates = mac_paths if not bold else mac_paths
+    else:
+        candidates = linux_paths
+
+    for fp in candidates:
+        if Path(fp).exists():
+            try:
+                return ImageFont.truetype(fp, size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
+
+
+# ============================================================
+# Output A: training curves (metrics 4-panel + loss 4-panel)
 # ============================================================
 
 def _plot_4panels(dfs, exp_list, col_config, save_path, fig_title, settings):
-    """通用 2x2 对比绘图。
+    """Generic 2x2 comparison plotter.
 
-    col_config: [(csv列名, 子图标题, y轴标签), ...] 4 项
+    col_config: [(csv_column, subplot_title, ylabel), ...] 4 items
     """
     plt = setup_cn_font(settings["dpi"])
     fig, axes = plt.subplots(2, 2, figsize=(14, 10), tight_layout=True)
@@ -153,7 +215,7 @@ def _plot_4panels(dfs, exp_list, col_config, save_path, fig_title, settings):
                 label=meta["display"], linewidth=2,
             )
         ax.set_title(subtitle, fontsize=13, fontweight="bold")
-        ax.set_xlabel("训练轮次 Epoch")
+        ax.set_xlabel("Epoch")
         ax.set_ylabel(ylabel)
         ax.legend(loc="best", framealpha=0.9)
         ax.grid(True, alpha=0.25)
@@ -161,39 +223,39 @@ def _plot_4panels(dfs, exp_list, col_config, save_path, fig_title, settings):
     save_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(save_path, bbox_inches="tight")
     plt.close()
-    print(f"✓ 已保存: {save_path}")
+    print(f"saved: {save_path}")
 
 
 def produce_A(dfs, exp_list, settings):
-    """A：训练曲线对比图（metrics + loss 各一张）"""
+    """A: training-curve comparison (metrics + loss)."""
     print("\n" + "=" * 60)
-    print("产出 A：训练曲线对比图")
+    print("Output A: training curves")
     print("=" * 60)
-    out = settings["abs_out_dir"] / "A_训练曲线"
+    out = settings["abs_out_dir"] / "A_curves"
 
     metric_cfg = [
-        ("metrics/mAP50-95(B)", "mAP@[50-95] 对比", "mAP@[50-95]"),
-        ("metrics/mAP50(B)", "mAP@50 对比", "mAP@50"),
-        ("metrics/precision(B)", "精确率 Precision 对比", "Precision"),
-        ("metrics/recall(B)", "召回率 Recall 对比", "Recall"),
+        ("metrics/mAP50-95(B)", "mAP@[50-95] Comparison", "mAP@[50-95]"),
+        ("metrics/mAP50(B)", "mAP@50 Comparison", "mAP@50"),
+        ("metrics/precision(B)", "Precision Comparison", "Precision"),
+        ("metrics/recall(B)", "Recall Comparison", "Recall"),
     ]
     _plot_4panels(
         dfs, exp_list, metric_cfg,
-        out / "A1_metrics_4合1对比曲线.png",
-        "四模型训练过程指标对比（FCE-YOLOv11 消融，m 规模）",
+        out / "A1_metrics_4panel.png",
+        "Training Metrics Comparison (FCE-YOLOv11 Ablation, scale-m)",
         settings,
     )
 
     loss_cfg = [
-        ("train/box_loss", "训练 Box Loss", "Box Loss"),
-        ("train/cls_loss", "训练 Cls Loss", "Cls Loss"),
-        ("train/dfl_loss", "训练 DFL Loss", "DFL Loss"),
-        ("val/box_loss", "验证 Box Loss", "Box Loss"),
+        ("train/box_loss", "Train Box Loss", "Box Loss"),
+        ("train/cls_loss", "Train Cls Loss", "Cls Loss"),
+        ("train/dfl_loss", "Train DFL Loss", "DFL Loss"),
+        ("val/box_loss", "Val Box Loss", "Box Loss"),
     ]
     _plot_4panels(
         dfs, exp_list, loss_cfg,
-        out / "A2_loss_4合1对比曲线.png",
-        "四模型训练/验证损失对比（FCE-YOLOv11 消融，m 规模）",
+        out / "A2_loss_4panel.png",
+        "Training/Validation Loss Comparison (FCE-YOLOv11 Ablation, scale-m)",
         settings,
     )
 
@@ -218,8 +280,8 @@ def _best_metrics(df):
 
 
 def produce_B1(dfs, exp_list, settings):
-    """B1：消融提升柱状图（mAP50-95 递进 + Δ增量标注）"""
-    print("\n--- B1：消融提升柱状图 ---")
+    """B1: ablation gain bar chart (mAP50-95 progression + delta annotation)."""
+    print("\n--- B1: ablation gain bar chart ---")
     plt = setup_cn_font(settings["dpi"])
     import numpy as np
 
@@ -237,11 +299,11 @@ def produce_B1(dfs, exp_list, settings):
     x = np.arange(len(vals))
     bars = ax.bar(x, vals, color=colors, edgecolor="black", linewidth=0.8, width=0.55)
 
-    # 柱顶标绝对值
+    # absolute value on top of each bar
     for b, v in zip(bars, vals):
         ax.text(b.get_x() + b.get_width() / 2, v + 0.3, f"{v:.2f}",
                 ha="center", va="bottom", fontsize=12, fontweight="bold")
-    # 柱间标 Δ 增量（相对前一根）
+    # delta between adjacent bars
     for i in range(1, len(vals)):
         delta = vals[i] - vals[i - 1]
         midx = (x[i - 1] + x[i]) / 2
@@ -256,29 +318,29 @@ def produce_B1(dfs, exp_list, settings):
     ax.set_xticks(x)
     ax.set_xticklabels(names, fontsize=11)
     ax.set_ylabel("mAP@[50-95] (%)", fontsize=12)
-    ax.set_title("消融实验：各模块对 mAP@[50-95] 的递进提升",
+    ax.set_title("Ablation: Progressive Improvement on mAP@[50-95]",
                  fontsize=14, fontweight="bold")
     ymin = min(vals) - 5
     ax.set_ylim(ymin, max(vals) + 6)
     ax.grid(True, axis="y", alpha=0.3)
-    out = settings["abs_out_dir"] / "B_消融分析"
+    out = settings["abs_out_dir"] / "B_ablation"
     out.mkdir(parents=True, exist_ok=True)
-    p = out / "B1_消融提升柱状图.png"
+    p = out / "B1_ablation_gain_bar.png"
     plt.savefig(p, bbox_inches="tight")
     plt.close()
-    print(f"✓ 已保存: {p}")
+    print(f"saved: {p}")
 
 
 def produce_B2(dfs, exp_list, settings):
-    """B2：综合性能雷达图（P/R/mAP50/mAP50-95 四维）"""
-    print("\n--- B2：综合性能雷达图 ---")
+    """B2: performance radar (P/R/mAP50/mAP50-95, 4 dims)."""
+    print("\n--- B2: performance radar ---")
     plt = setup_cn_font(settings["dpi"])
     import numpy as np
 
     dims = ["Precision", "Recall", "mAP@50", "mAP@[50-95]"]
     keys = ["precision", "recall", "mAP50", "mAP50_95"]
     angles = np.linspace(0, 2 * np.pi, len(dims), endpoint=False).tolist()
-    angles += angles[:1]  # 闭合
+    angles += angles[:1]  # close the polygon
 
     fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True), tight_layout=True)
     items = _ordered(dfs, exp_list)
@@ -297,21 +359,21 @@ def produce_B2(dfs, exp_list, settings):
     ax.set_ylim(70, 100)
     ax.set_yticks([75, 80, 85, 90, 95, 100])
     ax.set_yticklabels(["75", "80", "85", "90", "95", "100"], fontsize=9, color="gray")
-    ax.set_title("综合性能雷达图（best 指标，四模型对比）",
+    ax.set_title("Performance Radar (best metrics, 4-model comparison)",
                  fontsize=14, fontweight="bold", pad=22)
     ax.legend(loc="upper right", bbox_to_anchor=(1.28, 1.12), framealpha=0.9)
     ax.grid(True, alpha=0.4)
-    out = settings["abs_out_dir"] / "B_消融分析"
+    out = settings["abs_out_dir"] / "B_ablation"
     out.mkdir(parents=True, exist_ok=True)
-    p = out / "B2_综合性能雷达图.png"
+    p = out / "B2_performance_radar.png"
     plt.savefig(p, bbox_inches="tight")
     plt.close()
-    print(f"✓ 已保存: {p}")
+    print(f"saved: {p}")
 
 
 def produce_B3(dfs, exp_list, settings):
-    """B3：收敛速度对比（mAP50-95 首次达阈值所需轮数）"""
-    print("\n--- B3：收敛速度对比 ---")
+    """B3: convergence-speed comparison (epochs to first reach mAP50-95 threshold)."""
+    print("\n--- B3: convergence speed ---")
     plt = setup_cn_font(settings["dpi"])
     import numpy as np
 
@@ -325,7 +387,7 @@ def produce_B3(dfs, exp_list, settings):
             continue
         reached = df[df[col] >= thr]
         if reached.empty:
-            print(f"  ⚠ {meta['display']} 未达到阈值 {thr}，记为总轮数")
+            print(f"  warn: {meta['display']} never reached threshold {thr}; using total epochs")
             ep = int(df["epoch"].iloc[-1])
         else:
             ep = int(reached.iloc[0]["epoch"])
@@ -334,39 +396,39 @@ def produce_B3(dfs, exp_list, settings):
         colors.append(meta["color"])
 
     if not epochs:
-        print("  ⚠ 无可用数据，跳过 B3")
+        print("  warn: no usable data, skipping B3")
         return
 
     fig, ax = plt.subplots(figsize=(10, 5.5), tight_layout=True)
     y = np.arange(len(epochs))
     bars = ax.barh(y, epochs, color=colors, edgecolor="black", linewidth=0.8, height=0.55)
     for b, ep in zip(bars, epochs):
-        ax.text(ep + 2, b.get_y() + b.get_height() / 2, f"{ep} 轮",
+        ax.text(ep + 2, b.get_y() + b.get_height() / 2, f"{ep} ep",
                 va="center", fontsize=11, fontweight="bold")
 
-    # 标注最快相对最慢的提速比
+    # speedup of fastest vs slowest
     if len(epochs) >= 2:
         fastest, slowest = min(epochs), max(epochs)
         speedup = (1 - fastest / slowest) * 100
         ax.text(0.98, 0.04,
-                f"最快模型相对最慢提速 {speedup:.0f}%\n"
-                f"(阈值 mAP@[50-95]={thr})",
+                f"Fastest is {speedup:.0f}% quicker than slowest\n"
+                f"(threshold mAP@[50-95]={thr})",
                 transform=ax.transAxes, ha="right", va="bottom",
                 fontsize=10, color="#C62828",
                 bbox=dict(boxstyle="round,pad=0.4", fc="#FFF3E0", ec="#FF6B00"))
 
     ax.set_yticks(y)
     ax.set_yticklabels(names, fontsize=11)
-    ax.invert_yaxis()  # ① 在最上
-    ax.set_xlabel(f"首次达到 mAP@[50-95]≥{thr} 所需训练轮次", fontsize=12)
-    ax.set_title("收敛速度对比（越短越快）", fontsize=14, fontweight="bold")
+    ax.invert_yaxis()  # M1 at top
+    ax.set_xlabel(f"Epochs to first reach mAP@[50-95]>={thr}", fontsize=12)
+    ax.set_title("Convergence Speed (shorter is faster)", fontsize=14, fontweight="bold")
     ax.grid(True, axis="x", alpha=0.3)
-    out = settings["abs_out_dir"] / "B_消融分析"
+    out = settings["abs_out_dir"] / "B_ablation"
     out.mkdir(parents=True, exist_ok=True)
-    p = out / "B3_收敛速度对比.png"
+    p = out / "B3_convergence_speed.png"
     plt.savefig(p, bbox_inches="tight")
     plt.close()
-    print(f"✓ 已保存: {p}")
+    print(f"saved: {p}")
 
 
 def _compute_model_complexity(weights_path, imgsz=1280):
@@ -387,8 +449,8 @@ def _compute_model_complexity(weights_path, imgsz=1280):
 
 
 def produce_B_table(dfs, exp_list, settings):
-    """B 消融表：CSV + Markdown（含 Params/GFLOPs + Δ提升）"""
-    print("\n--- B 消融表：CSV + Markdown ---")
+    """B ablation table: CSV + Markdown (with Params/GFLOPs and delta gain)."""
+    print("\n--- B ablation table: CSV + Markdown ---")
     rows = []
     prev_map = None
     for key, df, meta in _ordered(dfs, exp_list):
@@ -396,62 +458,62 @@ def produce_B_table(dfs, exp_list, settings):
         if m is None:
             continue
         cur = round(m["mAP50_95"] * 100, 2)
-        delta = "—" if prev_map is None else f"+{cur - prev_map:.2f}"
+        delta = "-" if prev_map is None else f"+{cur - prev_map:.2f}"
         prev_map = cur
 
         weights = meta["abs_dir"] / "weights" / "best.pt"
         params_m, gflops = (None, None)
         if weights.exists():
-            print(f"  计算 {meta['display']} 复杂度 ...")
+            print(f"  computing complexity of {meta['display']} ...")
             try:
                 params_m, gflops = _compute_model_complexity(weights, settings["imgsz"])
             except Exception as ex:
-                print(f"  ⚠ 复杂度计算失败: {ex}")
+                print(f"  warn: complexity computation failed: {ex}")
         else:
-            print(f"  ⚠ 缺 best.pt: {weights}")
+            print(f"  warn: best.pt missing: {weights}")
 
         rows.append({
-            "序号": f"{'①②③④'[meta['order']-1]}" if meta["order"] <= 4 else str(meta["order"]),
-            "模型": meta["display"],
-            "FCE模块": meta["fce_module"],
-            "损失": meta["loss"],
-            "best轮次": m["epoch"],
+            "No": f"M{meta['order']}" if meta["order"] <= 4 else str(meta["order"]),
+            "Model": meta["display"],
+            "FCE_Module": meta["fce_module"],
+            "Loss": meta["loss"],
+            "Best_Epoch": m["epoch"],
             "Precision": round(m["precision"] * 100, 2),
             "Recall": round(m["recall"] * 100, 2),
             "mAP50": round(m["mAP50"] * 100, 2),
             "mAP50-95": cur,
-            "ΔmAP50-95": delta,
+            "d_mAP50-95": delta,
             "Params(M)": round(params_m, 2) if params_m else "N/A",
             "GFLOPs": round(gflops, 1) if gflops else "N/A",
         })
 
     df_out = pd.DataFrame(rows)
-    out = settings["abs_out_dir"] / "B_消融分析"
+    out = settings["abs_out_dir"] / "B_ablation"
     out.mkdir(parents=True, exist_ok=True)
 
-    csv_path = out / "B_消融实验结果表.csv"
+    csv_path = out / "B_ablation_results_table.csv"
     df_out.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    print(f"✓ 已保存: {csv_path}")
+    print(f"saved: {csv_path}")
 
-    # Markdown 表格
-    md = ["# 表4-1 消融实验结果（m 规模，imgsz=1280，best 指标）\n",
-          "> best 指标定义：验证集 mAP50-95 最高那一轮（YOLO 标准报告方式）\n",
-          "> 训练配置：AdamW, lr0=0.001, batch=32, 余弦退火, 300 epochs, 两阶段\n"]
+    # Markdown table
+    md = ["# Table 4-1 Ablation Results (scale-m, imgsz=1280, best metrics)\n",
+          "> best metrics = the epoch with the highest val mAP50-95 (standard YOLO reporting)\n",
+          "> Training: AdamW, lr0=0.001, batch=32, cosine annealing, 300 epochs, two-stage\n"]
     cols = list(df_out.columns)
     md.append("| " + " | ".join(cols) + " |")
     md.append("| " + " | ".join(["---"] * len(cols)) + " |")
     for _, r in df_out.iterrows():
         md.append("| " + " | ".join(str(r[c]) for c in cols) + " |")
-    md_path = out / "B_消融实验结果表.md"
+    md_path = out / "B_ablation_results_table.md"
     md_path.write_text("\n".join(md), encoding="utf-8")
-    print(f"✓ 已保存: {md_path}")
+    print(f"saved: {md_path}")
     return df_out
 
 
 def produce_B(dfs, exp_list, settings):
-    """B：消融分析全套"""
+    """B: ablation analysis (full set)."""
     print("\n" + "=" * 60)
-    print("产出 B：消融分析")
+    print("Output B: ablation analysis")
     print("=" * 60)
     produce_B1(dfs, exp_list, settings)
     produce_B2(dfs, exp_list, settings)
@@ -460,17 +522,17 @@ def produce_B(dfs, exp_list, settings):
 
 
 # ============================================================
-# 产出 C：检测可视化对比（val_batch0 GT + 四模型 pred）
+# Output C: detection visualization (val_batch0 GT + 4-model preds)
 # ============================================================
 
 def produce_C(dfs, exp_list, settings):
-    """C：val_batch0 预测图竖排对比"""
+    """C: stacked val_batch0 prediction comparison."""
     print("\n" + "=" * 60)
-    print("产出 C：检测可视化对比图")
+    print("Output C: detection visualization")
     print("=" * 60)
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
-    panels = [("真值标注 GT (val_batch0_labels)",
+    panels = [("Ground Truth (val_batch0_labels)",
                exp_list[0]["abs_dir"] / "val_batch0_labels.jpg")]
     for key, df, meta in _ordered(dfs, exp_list):
         panels.append((f"{meta['display']} (val_batch0_pred)",
@@ -478,7 +540,7 @@ def produce_C(dfs, exp_list, settings):
 
     for title, p in panels:
         if not p.exists():
-            print(f"⚠ 缺图: {p}")
+            print(f"warn: missing image: {p}")
             return
 
     imgs = [Image.open(p) for _, p in panels]
@@ -487,14 +549,7 @@ def produce_C(dfs, exp_list, settings):
     total_h = sum(im.height for im in imgs) + (title_h + pad) * len(imgs) + pad
     canvas = Image.new("RGB", (w + pad * 2, total_h), "white")
 
-    font = None
-    for fp in ["C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf",
-               "C:/Windows/Fonts/msyhbd.ttc"]:
-        if Path(fp).exists():
-            font = ImageFont.truetype(fp, 30)
-            break
-    if font is None:
-        font = ImageFont.load_default()
+    font = _load_pil_font(size=30)
 
     draw = ImageDraw.Draw(canvas)
     y = pad
@@ -504,11 +559,11 @@ def produce_C(dfs, exp_list, settings):
         canvas.paste(im, (pad, y))
         y += im.height + pad
 
-    out = settings["abs_out_dir"] / "C_检测对比"
+    out = settings["abs_out_dir"] / "C_detection"
     out.mkdir(parents=True, exist_ok=True)
-    p = out / "C_val_batch0_四模型对比.png"
+    p = out / "C_val_batch0_4model_compare.png"
     canvas.save(p, "PNG", dpi=(settings["dpi"], settings["dpi"]))
-    print(f"✓ 已保存: {p}")
+    print(f"saved: {p}")
 
 
 # ============================================================
@@ -516,11 +571,11 @@ def produce_C(dfs, exp_list, settings):
 # ============================================================
 
 def _hstack_with_titles(panels, out_path, fig_title, settings, subtitle_h=60):
-    """横向拼接图片并加中文小标题。"""
-    from PIL import Image, ImageDraw, ImageFont
+    """Horizontally stack images with English subtitles + a main title."""
+    from PIL import Image, ImageDraw
     for _, p in panels:
         if not p.exists():
-            print(f"⚠ 缺图: {p}")
+            print(f"warn: missing image: {p}")
             return False
     imgs = [Image.open(p) for _, p in panels]
     h = min(im.height for im in imgs)
@@ -531,20 +586,8 @@ def _hstack_with_titles(panels, out_path, fig_title, settings, subtitle_h=60):
     total_h = h + title_h + pad * 3
     canvas = Image.new("RGB", (total_w, total_h), "white")
 
-    font = None
-    for fp in ["C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf"]:
-        if Path(fp).exists():
-            font = ImageFont.truetype(fp, 28)
-            break
-    if font is None:
-        font = ImageFont.load_default()
-    title_font = None
-    for fp in ["C:/Windows/Fonts/msyhbd.ttc", "C:/Windows/Fonts/msyh.ttc"]:
-        if Path(fp).exists():
-            title_font = ImageFont.truetype(fp, 34)
-            break
-    if title_font is None:
-        title_font = font
+    font = _load_pil_font(size=28)
+    title_font = _load_pil_font(size=34, bold=True)
 
     draw = ImageDraw.Draw(canvas)
     draw.text((pad, 8), fig_title, fill="black", font=title_font)
@@ -557,39 +600,40 @@ def _hstack_with_titles(panels, out_path, fig_title, settings, subtitle_h=60):
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(out_path, "PNG", dpi=(settings["dpi"], settings["dpi"]))
-    print(f"✓ 已保存: {out_path}")
+    print(f"saved: {out_path}")
     return True
 
 
 def produce_D(dfs, exp_list, settings):
-    """D：PR/F1/混淆矩阵 中文化拼接"""
+    """D: PR / F1 / confusion matrix montage."""
     print("\n" + "=" * 60)
-    print("产出 D：PR/F1/混淆矩阵 中文化拼接")
+    print("Output D: PR / F1 / confusion montage")
     print("=" * 60)
-    out = settings["abs_out_dir"] / "D_PR混淆"
+    out = settings["abs_out_dir"] / "D_pr_confusion"
     items = _ordered(dfs, exp_list)
 
     # D1 PR
     _hstack_with_titles(
         [(m["display"], m["abs_dir"] / "BoxPR_curve.png") for _, _, m in items],
-        out / "D1_PR曲线_四模型对比.png",
-        "四模型 PR 曲线对比（m 规模）", settings,
+        out / "D1_PR_4model_compare.png",
+        "PR Curve Comparison (4 models, scale-m)", settings,
     )
     # D2 F1
     _hstack_with_titles(
         [(m["display"], m["abs_dir"] / "BoxF1_curve.png") for _, _, m in items],
-        out / "D2_F1曲线_四模型对比.png",
-        "四模型 F1 曲线对比（m 规模）", settings,
+        out / "D2_F1_4model_compare.png",
+        "F1 Curve Comparison (4 models, scale-m)", settings,
     )
-    # D3 混淆矩阵（取 order 最大的，即完整 FCE）
+    # D3 confusion matrix (full FCE = highest order)
     last = items[-1][2]
     cn = settings.get("class_names", [])
-    cls_note = "，".join(f"{i}={n}" for i, n in enumerate(cn)) if cn else ""
+    cls_note = ", ".join(f"{i}={n}" for i, n in enumerate(cn)) if cn else ""
+    note_suffix = f" [{cls_note}]" if cls_note else ""
     _hstack_with_titles(
-        [(f"{last['display']}（归一化混淆矩阵）",
+        [(f"{last['display']} (Normalized Confusion Matrix)",
           last["abs_dir"] / "confusion_matrix_normalized.png")],
-        out / "D3_FCE混淆矩阵.png",
-        f"{last['display']} 归一化混淆矩阵（{cls_note}）", settings,
+        out / "D3_FCE_confusion_matrix.png",
+        f"{last['display']} Normalized Confusion Matrix{note_suffix}", settings,
     )
 
 
@@ -598,32 +642,32 @@ def produce_D(dfs, exp_list, settings):
 # ============================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="论文图表生成（FCE-YOLOv11 消融）")
+    parser = argparse.ArgumentParser(description="Paper figure generator (FCE-YOLOv11 ablation)")
     parser.add_argument(
         "--config", default=str(Path(__file__).parent / "paper_figs_config.yaml"),
-        help="YAML 配置文件路径",
+        help="YAML config file path",
     )
     parser.add_argument(
         "--only", default="", type=str,
-        help="只产出指定项，逗号分隔，如 A,B,C,D；默认全部",
+        help="Produce only the given categories (comma-separated, e.g. A,B,C,D); default all",
     )
     args = parser.parse_args()
 
     config_path = Path(args.config).resolve()
     if not config_path.exists():
-        print(f"✗ 配置文件不存在: {config_path}")
+        print(f"error: config not found: {config_path}")
         sys.exit(1)
 
     print("=" * 60)
-    print(f"配置文件: {config_path}")
+    print(f"config: {config_path}")
     print("=" * 60)
     exp_list, settings = load_config(config_path)
-    print(f"  实验组: {[e['key'] for e in exp_list]}")
-    print(f"  产出目录: {settings['abs_out_dir']}")
+    print(f"  experiments: {[e['key'] for e in exp_list]}")
+    print(f"  output_dir: {settings['abs_out_dir']}")
 
     dfs = load_all_dfs(exp_list)
     if not dfs:
-        print("✗ 无可用数据，退出")
+        print("error: no usable data, exiting")
         sys.exit(1)
 
     targets = {t.strip().upper() for t in args.only.split(",") if t.strip()} or \
@@ -639,7 +683,7 @@ def main():
         produce_D(dfs, exp_list, settings)
 
     print("\n" + "=" * 60)
-    print(f"✅ 全部完成。产出目录: {settings['abs_out_dir']}")
+    print(f"DONE. output_dir: {settings['abs_out_dir']}")
     print("=" * 60)
 
 

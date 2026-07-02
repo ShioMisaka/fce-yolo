@@ -1,6 +1,18 @@
 # 公平消融实验配方（Fair Ablation Recipe）
 # 所有 4 组模型共享的统一变量；修改此文件即可重做实验，无需改代码。
 # 详见 docs/superpowers/specs/2026-07-01-fair-ablation-training-design.md
+#
+# 【工作流】跨机器（Linux 工作站训练 -> Windows 本地整理）：
+#   工作站: python script/run_ablation.py --scales m      # 训练 -> runs/detect
+#           python script/run_ablation.py export --scales m  # 打包 -> <export_root>/m
+#           tar -czf fair_runs_m.tar.gz fce-yolo/<export_root>/m
+#   本地:   解压后 python script/run_ablation.py --skip-train --source fair_runs --scales m
+#
+# - export_root: 工作站训练产物打包目录（相对 fce-yolo 仓库根，纯英文）。
+#                训练在 runs/detect 完成，export 子命令把 stage2 复制到此，便于打包回传。
+# - output_root: 本地最终整理目录（相对项目根 Visual Guidance Robotic Arm/）。
+#                本地 --skip-train --source fair_runs 时，从这里读结果、写对比表+图表。
+#                本地是 Windows，路径含中文无妨；工作站只用 export_root，不碰 output_root。
 
 # ===== 公平对比的统一变量（所有模型共享）=====
 shared:
@@ -34,7 +46,10 @@ stage2:                 # 全网络微调
 freeze: 10              # 所有模型 stage1 都冻结前 10 层（含 baseline）
 
 # ===== 实验矩阵 =====
-scales: [n, s, m]       # 本次跑 3 个尺度
+# 注意：n 尺度 FCE 是负增益（容量不足，注意力模块过参数化），历史数据
+# n: FCE-baseline=-0.064；s/m/l/x 均为正。论文主推 m 尺度，本配方默认只跑 m。
+# 如需跨尺度论证，改为 [m, s] 或 [m, s, l]。
+scales: [m]
 models: [baseline, bifpn, fce, fce_wiou]   # ①②③④ 消融阶梯
 
 # IoU 损失显式映射（fce_wiou 走 WIoU，未列出的默认 CIoU）
@@ -42,7 +57,9 @@ iou_override:
   fce_wiou: WIoU
 
 # ===== 输出 =====
-# 论文项目根（Visual Guidance Robotic Arm/）下的相对路径
+# 工作站打包目录（相对 fce-yolo 仓库根，纯英文，export 子命令写入）
+export_root: fair_runs
+# 本地最终整理目录（相对项目根，Windows 本地用）
 output_root: 实验/论文正式实验/main_ablation_fair
 copy_stage1: false      # 默认只复制 stage2（节磁盘）；stage1 留 runs/detect/
 total_epochs: 300       # 文档用途 = stage1.epochs + stage2.epochs
