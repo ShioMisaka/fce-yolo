@@ -96,7 +96,7 @@ def load_recipe(yaml_path: Path) -> dict:
         recipe = yaml.safe_load(f)
 
     # 必需字段校验
-    required = ["shared", "stage1", "stage2", "freeze", "scales", "models", "output_root"]
+    required = ["shared", "stage1", "stage2", "freeze", "scales", "models"]
     missing = [k for k in required if k not in recipe]
     if missing:
         raise ValueError(f"配方缺少必需字段: {missing}")

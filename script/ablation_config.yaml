@@ -1,17 +1,15 @@
 # 公平消融实验配方（Fair Ablation Recipe）
 # 所有 4 组模型共享的统一变量；修改此文件即可重做实验，无需改代码。
 #
-# 【工作流】跨机器（Linux 工作站训练 -> Windows 本地整理）：
-#   工作站: python script/run_ablation.py --scales m          # 训练 -> runs/detect，整理 -> runs/outputs/m
-#           zip -r fair_runs_m.zip runs/outputs runs/detect    # 打包回传（全英文，在 fce-yolo 仓库内）
-#   本地:   解压 fair_runs_m.zip 到 fce-yolo/ 下（得到 runs/outputs、runs/detect）
-#           python script/run_ablation.py --skip-train --local --scales m
-#           # → 从 runs/outputs 读，整理到 实验/论文正式实验/main_ablation_fair/（中文目录，Windows OK）
+# 【工作流】跨机器（Linux 工作站训练 -> Windows 本地出图）：
+#   工作站: python script/run_ablation.py --scale m          # 训练 -> runs/detect，整理 -> runs/outputs/fair_<ts>/
+#           zip -r fair_<ts>.zip runs/outputs/fair_<ts>       # 打包单个时间戳文件夹回传
+#   本地:   解压 fair_<ts>.zip 到 fce-yolo/ 下（得到 runs/outputs/fair_<ts>/）
+#           直接打开 fair_<ts>/ 查看（解压即用）
+#           若要重出图: python script/run_ablation.py --replot fair_<ts>
 #
-# 输出根说明（run_ablation.py 自动选择，无需在此配置）：
-# - 工作站（默认）：整理产物 → fce-yolo/runs/outputs/<scale>/（英文，打 zip 回传）
-# - 本地（--local）：从 runs/outputs 读，整理到 实验/论文正式实验/main_ablation_fair/
-# output_root 仅 --local 模式使用，工作站流程不读它。
+# 输出根说明：run_ablation.py 自动创建 runs/outputs/fair_<YYYYMMDD_HHMMSS>/，
+# 无需在此配置 output_root（已删除该字段）。
 
 # ===== 公平对比的统一变量（所有模型共享）=====
 shared:
@@ -56,8 +54,6 @@ iou_override:
   fce_wiou: WIoU
 
 # ===== 输出 =====
-# output_root: 仅 --local 模式（本地 Windows 整理）使用，工作站流程不读。
-# 工作站整理根固定为 fce-yolo/runs/outputs（run_ablation.py 硬编码，无需配置）。
-output_root: 实验/论文正式实验/main_ablation_fair
+# run_ablation.py 自动创建 runs/outputs/fair_<ts>/，无需配置 output_root。
 copy_stage1: false      # 默认只复制 stage2（节磁盘）；stage1 留 runs/detect/
 total_epochs: 300       # 文档用途 = stage2.epochs（单阶段）
