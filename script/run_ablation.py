@@ -43,40 +43,34 @@ from script.config import (  # noqa: E402
 from script.analysis import load_results, extract_metrics  # noqa: E402
 from script.trainer import YOLOv11Trainer  # noqa: E402
 
-# 论文项目根（Visual Guidance Robotic Arm/，fce-yolo 上一级，仅 --local 模式用）
-PAPER_ROOT = PROJECT_ROOT.parent
 DEFAULT_RECIPE = PROJECT_ROOT / "script" / "ablation_config.yaml"
 
-# 工作站整理产物根（英文，fce-yolo 仓库内，便于打包 zip 回传）
-# 训练在 runs/detect（ultralytics 原生）；整理（对比表/图表/README）在 runs/outputs
-WORK_OUTPUT_ROOT = PROJECT_ROOT / "runs" / "outputs"
+# 时间戳父目录：每次完整运行在其下创建 runs/outputs/fair_<YYYYMMDD_HHMMSS>/，
+# 收纳 stage2 副本 + 对比表 + 图表 + README，自包含、打包回传一条命令。
+WORK_BASE_ROOT = PROJECT_ROOT / "runs" / "outputs"
 
 
-def get_output_root(local: bool, recipe: dict) -> Path:
-    """返回整理产物（对比表/图表/README）的写入根。
+def make_run_dir(base: Path = None) -> Path:
+    """创建 runs/outputs/fair_<YYYYMMDD_HHMMSS>/ 并返回。
 
-    - local=False（工作站默认）：返回 PROJECT_ROOT/runs/outputs（英文，仓库内）
-    - local=True（本地 --local）：返回 PAPER_ROOT/recipe['output_root']（中文项目目录，Windows OK）
-
-    这样工作站全程不碰中文路径，打包 `zip runs/` 回传；本地解压后再搬到中文目录。
+    每次完整运行（训练/整理）创建一个独立时间戳文件夹，收纳全部产物，
+    避免不同次实验互相覆盖。--replot 模式不调用此函数，直接复用已有文件夹。
     """
-    if local:
-        return PAPER_ROOT / recipe["output_root"]
-    return WORK_OUTPUT_ROOT
+    from datetime import datetime
+    if base is None:
+        base = WORK_BASE_ROOT
+    ts = datetime.now().strftime("fair_%Y%m%d_%H%M%S")
+    run_dir = base / ts
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
 
 
 def _rel(p: Path) -> Path:
-    """返回相对 PROJECT_ROOT 或 PAPER_ROOT 的路径（双根兼容，用于打印）。
-
-    工作站产物在 PROJECT_ROOT/runs/outputs，本地 --local 产物在 PAPER_ROOT/中文目录。
-    """
+    """返回相对 PROJECT_ROOT 的路径（用于打印）。无法相对时原样返回。"""
     try:
         return p.relative_to(PROJECT_ROOT)
     except ValueError:
-        try:
-            return p.relative_to(PAPER_ROOT)
-        except ValueError:
-            return p
+        return p
 
 
 def _rel_posix(p: Path) -> str:
@@ -177,7 +171,7 @@ def build_train_config(recipe: dict, model_key: str) -> TrainConfig:
 def print_matrix_preview(recipe: dict, scales: list, models: list, output_root: Path = None):
     """Print the experiment matrix + unified-variable summary for review."""
     if output_root is None:
-        output_root = WORK_OUTPUT_ROOT
+        output_root = WORK_BASE_ROOT
     print("\n" + "=" * 80)
     print("Fair ablation matrix preview")
     print("=" * 80)
@@ -356,7 +350,7 @@ def archive_one(scale: str, model_key: str, recipe: dict, source: str = "runs",
     """
     import shutil
     if output_root is None:
-        output_root = WORK_OUTPUT_ROOT
+        output_root = WORK_BASE_ROOT
     scale_dir = output_root / scale
     model_dir_name = get_model_dir_name(model_key, scale)
     dst_model_dir = scale_dir / model_dir_name
@@ -397,7 +391,7 @@ def collect_results(scales: list, models: list, recipe: dict, source: str = "run
         {scale: {model_key: {"stage2_dir": Path, "csv": Path, "df": DataFrame, "metrics": dict}}}
     """
     if output_root is None:
-        output_root = WORK_OUTPUT_ROOT
+        output_root = WORK_BASE_ROOT
     print("\n" + "=" * 80)
     print(f"Stage 2: collect training results (source={source}, output={_rel(output_root)})")
     print("=" * 80)
@@ -459,7 +453,7 @@ def write_comparison_table(scale: str, scale_results: dict, recipe: dict,
                            output_root: Path = None):
     """为单尺度生成对比表 CSV + MD（按 best 指标，含 Δ 列）。"""
     if output_root is None:
-        output_root = WORK_OUTPUT_ROOT
+        output_root = WORK_BASE_ROOT
     cmp_dir = output_root / "comparison"
     cmp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -535,7 +529,7 @@ def write_cross_scale_summary(all_results: dict, recipe: dict, output_root: Path
     """Cross-scale summary: best-mAP50-95 matrix of each model across n/s/m, to
     inspect scale-stability of the improvement."""
     if output_root is None:
-        output_root = WORK_OUTPUT_ROOT
+        output_root = WORK_BASE_ROOT
     cmp_dir = output_root / "comparison"
     cmp_dir.mkdir(parents=True, exist_ok=True)
     import pandas as pd
@@ -568,7 +562,7 @@ def generate_paper_figs_config(scale: str, recipe: dict, output_root: Path = Non
     写成"相对 output_root 所在根"的路径即可两边都对齐。
     """
     if output_root is None:
-        output_root = WORK_OUTPUT_ROOT
+        output_root = WORK_BASE_ROOT
     # output_root 相对其所在根（PROJECT_ROOT 或 PAPER_ROOT）的相对前缀（posix 正斜杠）
     out_prefix = _rel_posix(output_root)
     cfg_dir = PROJECT_ROOT / "script"
@@ -635,7 +629,7 @@ def generate_readme(recipe: dict, all_results: dict, output_root: Path = None):
     """Generate <output_root>/README.md (recipe summary + real metrics +
     diff vs the legacy main_ablation_m)."""
     if output_root is None:
-        output_root = WORK_OUTPUT_ROOT
+        output_root = WORK_BASE_ROOT
     output_root.mkdir(parents=True, exist_ok=True)  # ensure dir exists on full failure
     readme = output_root / "README.md"
     sh = recipe["shared"]
