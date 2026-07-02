@@ -415,6 +415,31 @@ def collect_results(scales: list, models: list, recipe: dict, source: str = "run
     return all_results
 
 
+def load_existing_results(scales: list, models: list, output_root: Path) -> dict:
+    """从 output_root/<scale>/0X_*/stage2 直接加载 csv（--replot 用，不做复制）。
+
+    与 collect_results 的区别：不调 archive_one（不复制 stage2），直接读已整理好的目录。
+    用于 --replot 场景：时间戳文件夹已含完整 stage2 副本，只需重新读 csv 出图。
+    """
+    all_results = {}
+    for scale in scales:
+        all_results[scale] = {}
+        for model_key in models:
+            s2 = output_root / scale / get_model_dir_name(model_key, scale) / "stage2"
+            csv = s2 / "results.csv"
+            if not csv.exists():
+                print(f"  warn: {csv} missing, skipping")
+                continue
+            df = load_results(csv)
+            all_results[scale][model_key] = {
+                "stage2_dir": s2,
+                "csv": csv,
+                "df": df,
+                "metrics": extract_metrics(df),
+            }
+    return all_results
+
+
 # ============================================================
 # 对比表生成
 # ============================================================
@@ -734,16 +759,38 @@ def main():
     args = parse_args()
     recipe = load_recipe(args.recipe)
 
-    scales = args.scales or recipe["scales"]
+    # --- scale 解析（连写）---
+    if args.scale:
+        scales = parse_scale_arg(args.scale)
+    else:
+        scales = recipe["scales"]
     models = args.models or recipe["models"]
-    output_root = get_output_root(args.local, recipe)
+
+    # --- output_root 确定 ---
+    if args.replot:
+        # --replot 模式：复用已有时间戳文件夹，只重出图 + README
+        output_root = WORK_BASE_ROOT / args.replot
+        if not output_root.exists():
+            sys.exit(f"error: run dir not found: {output_root}")
+        print(f"\nreplot mode: {output_root}")
+
+        all_results = load_existing_results(scales, models, output_root)
+        if not any(all_results.values()):
+            sys.exit("error: no usable results.csv found in run dir")
+        generate_readme(recipe, all_results, output_root=output_root)
+        generate_figures(scales, recipe, output_root=output_root)
+        print(f"\nDONE. figures refreshed in: {output_root}")
+        return
+
+    # 正常模式：dry-run 用占位路径预览（不建目录），非 dry-run 才真正创建时间戳文件夹
+    output_root = WORK_BASE_ROOT / "fair_<ts>" if args.dry_run else make_run_dir()
 
     print_matrix_preview(recipe, scales, models, output_root)
     if args.dry_run:
         return
 
-    # Stage 1: train (workstation only; --local implies --skip-train)
-    if not args.skip_train and not args.local:
+    # Stage 1: train
+    if not args.skip_train:
         print("\n" + "=" * 80)
         print("Stage 1: training")
         print("=" * 80)
@@ -757,16 +804,14 @@ def main():
                     run_one_experiment(model_key, scale, recipe)
                 except Exception as e:
                     print(f"x {scale}/{model_key} failed: {e}")
-                    failed_log = WORK_OUTPUT_ROOT / "failed.log"
-                    failed_log.parent.mkdir(parents=True, exist_ok=True)
+                    failed_log = output_root / "failed.log"
                     with open(failed_log, "a", encoding="utf-8") as f:
                         f.write(f"{scale}/{model_key}: {e}\n")
     else:
         print("warn: skipping training")
 
-    # Stage 2: collect results (respect --source)
-    all_results = collect_results(scales, models, recipe, source=args.source,
-                                  output_root=output_root)
+    # Stage 2: collect results
+    all_results = collect_results(scales, models, recipe, output_root=output_root)
 
     # Stage 3: comparison tables
     print("\n" + "=" * 80)
@@ -788,11 +833,8 @@ def main():
     print("ALL DONE")
     print("=" * 80)
     print(f"results dir: {output_root}")
-    if not args.local:
-        print(f"\nAll in-repo outputs are under: {PROJECT_ROOT / 'runs'}")
-        print("Pack for transfer to local:")
-        print("  zip -r fair_runs.zip runs/outputs runs/detect")
-        print("  # or: tar -czf fair_runs.tar.gz runs/outputs runs/detect")
+    print(f"\nPack for transfer to local:")
+    print(f"  zip -r {output_root.name}.zip {_rel(output_root)}")
 
 
 if __name__ == "__main__":
