@@ -565,18 +565,18 @@ def write_cross_scale_summary(all_results: dict, recipe: dict, output_root: Path
 # ============================================================
 
 def generate_paper_figs_config(scale: str, recipe: dict, output_root: Path = None) -> Path:
-    """为指定尺度生成适配 main_ablation_fair 的 paper_figs_config YAML。
+    """为指定尺度生成 paper_figs_config YAML，落入 output_root（时间戳文件夹）。
 
-    output_root 决定 dir/out_dir 的相对前缀（工作站 runs/outputs 或本地中文目录）。
-    paper_figs.py 的 _resolve_path 会按 PROJECT_ROOT→PAPER_ROOT 顺序解析，所以这里
-    写成"相对 output_root 所在根"的路径即可两边都对齐。
+    output_root 决定 dir/out_dir 的相对前缀（runs/outputs/fair_<ts>）。
+    paper_figs.py 的 _resolve_path 会基于 PROJECT_ROOT 解析相对路径；
+    _detect_root 按 len(dir.parts) 自适应剥离层级，故时间戳多一层也能正确解析。
+    YAML 落入时间戳文件夹使其自包含（本地解压后 --replot 可直接用）。
     """
     if output_root is None:
         output_root = WORK_BASE_ROOT
-    # output_root 相对其所在根（PROJECT_ROOT 或 PAPER_ROOT）的相对前缀（posix 正斜杠）
+    # output_root 相对 PROJECT_ROOT 的相对前缀（posix 正斜杠）
     out_prefix = _rel_posix(output_root)
-    cfg_dir = PROJECT_ROOT / "script"
-    cfg_path = cfg_dir / f"paper_figs_config_fair_{scale}.yaml"
+    cfg_path = output_root / f"paper_figs_config_fair_{scale}.yaml"
 
     # 渲染专用配置（color/linestyle/fce_module 不在 MODEL_DISPLAY 中，此处独立维护）
     _render = {
