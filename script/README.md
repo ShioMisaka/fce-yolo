@@ -28,10 +28,10 @@ python script/train.py fce --scale s
 # 多模型对比
 python script/compare.py --models baseline fce --scale s
 
-# 公平消融实验（全统一变量，4 模型 × n/s/m，全部两阶段含 baseline）
+# 公平消融实验（全统一变量，4 模型 × 多尺度，单阶段）
 python script/run_ablation.py --dry-run            # 预览矩阵
 python script/run_ablation.py                      # 跑全配方
-python script/run_ablation.py --scales m           # 只跑 m
+python script/run_ablation.py --scale m            # 只跑 m（连写：--scale nsm 跑 n/s/m）
 ```
 
 ## 训练 CLI
@@ -191,21 +191,45 @@ plot_comparison_curves(
 ## 公平消融实验（run_ablation.py）
 
 `run_ablation.py` 是实验编排器：按 `ablation_config.yaml` 配方一键训练 4 类模型 × 多尺度，
-**强制全部两阶段（含 baseline）** 实现公平对齐，断点续跑，自动整理结果 + 对比表 + 论文图表。
+产出受控对比表与论文图表，全部落在同一个时间戳文件夹 `runs/outputs/fair_<YYYYMMDD_HHMMSS>/`。
+
+**一次实验的全部产物**（自包含，打包回传一条命令）：
+```
+runs/outputs/fair_20260702_153000/
+├── m/01_baseline_yolo11m/stage2/   (含 best.pt + results.csv + 曲线图)
+├── m/02_bifpn_m/stage2/  ...
+├── comparison/m_comparison_summary.{csv,md}
+├── figures/m/{A_curves,B_ablation,C_detection,D_pr_confusion}/
+└── README.md
+```
+
+### 工作流（工作站训练 → 本地出图）
+
+```bash
+# 工作站（训练 + 整理，全英文路径）
+python script/run_ablation.py --scale m          # → runs/outputs/fair_<ts>/
+python script/run_ablation.py --scale nsm        # 多尺度连写：n/s/m 三组
+zip -r fair_<ts>.zip runs/outputs/fair_<ts>      # 打包单个文件夹回传
+
+# 本地（解压后直接查看；想重出图用 --replot）
+unzip fair_<ts>.zip -d fce-yolo/
+python script/run_ablation.py --replot fair_<ts>  # 从已有文件夹重出图，写回原位
+```
+
+### 参数
+
+| 参数 | 说明 |
+|------|------|
+| `--scale nsm` | 尺度连写（n/s/m/l/x 任意组合），不传则用配方 scales |
+| `--models baseline fce` | 子集模型，不传则用配方 models |
+| `--skip-train` | 跳过训练，仅整理已有 runs/detect 结果 + 出图 |
+| `--dry-run` | 仅预览矩阵，不训练 |
+| `--replot fair_<ts>` | 从已有时间戳文件夹重出图 + README，写回原位 |
 
 **配方 `ablation_config.yaml` 是唯一输入**——重做实验只改 YAML，不改代码。
 
 关键设计：
-- **公平注入**：运行时用 `dataclasses.replace` 给 baseline 注入 `stage1+freeze`，与 FCE 结构对称
-- **统一变量**：seed=42 + deterministic + degrees=10 + 两阶段 50+250=300ep（4 组完全相同）
-- **数据真实性红线**：对比表如实填真实 best 指标，不保证 ①<②<③<④ 严格递增
-
-用法：
-```bash
-python script/run_ablation.py --dry-run                # 仅预览实验矩阵
-python script/run_ablation.py                          # 跑全配方
-python script/run_ablation.py --scales m --models baseline fce   # 子集
-python script/run_ablation.py --skip-train             # 仅整理已有结果+出图
-```
-
-产出：`实验/论文正式实验/main_ablation_fair/<scale>/0X_*/stage2/` + `comparison/` + `论文图表/`。
+- **时间戳文件夹**：每次运行创建独立 `fair_<ts>/`，避免覆盖
+- **公平注入**：`dataclasses.replace` 给 baseline 注入统一 stage 配置
+- **统一变量**：seed=42 + deterministic + degrees=10 + 单阶段 300ep（4 组完全相同）
+- **数据真实性红线**：对比表如实填真实 best 指标，不保证 M1<M2<M3<M4 严格递增
