@@ -324,28 +324,11 @@ def _stage2_run_dir(model_key: str, scale: str) -> Path:
     return Path("runs/detect") / base_cfg.result_pattern.format(scale=scale)
 
 
-def _resolve_stage2_source(model_key: str, scale: str, source: str, recipe: dict) -> Path:
-    """Resolve where to read stage2 results from.
-
-    source:
-      - "runs"    -> fce-yolo/runs/detect/<exp> (workstation default, just trained)
-      - "outputs" -> fce-yolo/runs/outputs/<scale>/<0X_name>/stage2 (after unpacking
-                     a workstation zip locally; the zip carries runs/outputs)
-    """
-    if source == "outputs":
-        return WORK_OUTPUT_ROOT / scale / get_model_dir_name(model_key, scale) / "stage2"
-    # default: runs/detect (relative to PROJECT_ROOT for portability)
-    s2 = _stage2_run_dir(model_key, scale)
-    if not s2.is_absolute():
-        s2 = PROJECT_ROOT / s2
-    return s2
-
-
-def archive_one(scale: str, model_key: str, recipe: dict, source: str = "runs",
-                output_root: Path = None):
+def archive_one(scale: str, model_key: str, recipe: dict, output_root: Path = None):
     """把 stage2 结果复制到 output_root/<scale>/0X_<name>/stage2。
 
-    source 见 _resolve_stage2_source。output_root 为 None 时用 WORK_OUTPUT_ROOT。
+    源固定从 runs/detect/<result_pattern> 读（ultralytics 原生训练产物）。
+    output_root 为 None 时用 WORK_BASE_ROOT。
     默认仅复制 stage2（copy_stage1: false）；目录自包含、可独立归档。
     """
     import shutil
@@ -356,7 +339,9 @@ def archive_one(scale: str, model_key: str, recipe: dict, source: str = "runs",
     dst_model_dir = scale_dir / model_dir_name
     scale_dir.mkdir(parents=True, exist_ok=True)
 
-    s2_src = _resolve_stage2_source(model_key, scale, source, recipe)
+    s2_src = _stage2_run_dir(model_key, scale)
+    if not s2_src.is_absolute():
+        s2_src = PROJECT_ROOT / s2_src
 
     copy_stage1 = recipe.get("copy_stage1", False)
 
@@ -383,9 +368,9 @@ def archive_one(scale: str, model_key: str, recipe: dict, source: str = "runs",
     return dst_s2
 
 
-def collect_results(scales: list, models: list, recipe: dict, source: str = "runs",
+def collect_results(scales: list, models: list, recipe: dict,
                     output_root: Path = None) -> dict:
-    """遍历 (scale, model)，复制结果并汇总 results.csv 路径。
+    """遍历 (scale, model)，从 runs/detect 复制 stage2 到 output_root，汇总 csv 路径。
 
     Returns:
         {scale: {model_key: {"stage2_dir": Path, "csv": Path, "df": DataFrame, "metrics": dict}}}
@@ -393,14 +378,14 @@ def collect_results(scales: list, models: list, recipe: dict, source: str = "run
     if output_root is None:
         output_root = WORK_BASE_ROOT
     print("\n" + "=" * 80)
-    print(f"Stage 2: collect training results (source={source}, output={_rel(output_root)})")
+    print(f"Stage 2: collect training results (output={_rel(output_root)})")
     print("=" * 80)
 
     all_results = {}
     for scale in scales:
         all_results[scale] = {}
         for model_key in models:
-            dst_s2 = archive_one(scale, model_key, recipe, source=source, output_root=output_root)
+            dst_s2 = archive_one(scale, model_key, recipe, output_root=output_root)
             csv = dst_s2 / "results.csv"
             if not csv.exists():
                 print(f"  warn: results.csv missing: {csv}")
