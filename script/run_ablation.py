@@ -681,40 +681,50 @@ def generate_readme(recipe: dict, all_results: dict, output_root: Path = None):
 # CLI
 # ============================================================
 
+def parse_scale_arg(raw: str) -> list:
+    """解析 --scale 连写：'nsm' -> ['n','s','m']；'m' -> ['m']。
+
+    每个字符必须 ∈ {n,s,m,l,x}，不允许重复，不允许空字符串。
+    """
+    valid = {"n", "s", "m", "l", "x"}
+    scales = list(raw)
+    bad = [c for c in scales if c not in valid]
+    if bad:
+        raise ValueError(f"invalid scale chars {bad} in '--scale {raw}'; valid: n/s/m/l/x")
+    if len(scales) != len(set(scales)):
+        raise ValueError(f"duplicate scale chars in '--scale {raw}'")
+    if not scales:
+        raise ValueError("--scale cannot be empty")
+    return scales
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Fair ablation orchestrator (one-click train 4 models x scales)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-examples (workstation, default):
+examples:
   python script/run_ablation.py --dry-run            # preview matrix only
-  python script/run_ablation.py --scales m           # train m, output -> runs/outputs/m
+  python script/run_ablation.py --scale m            # train m, output -> runs/outputs/fair_<ts>/
+  python script/run_ablation.py --scale nsm          # train n,s,m scales
   python script/run_ablation.py                      # train full recipe
   # after finish, pack for transfer:
-  #   zip -r fair_runs_m.zip runs/outputs runs/detect
-
-examples (local, after unpacking the zip into fce-yolo/):
-  python script/run_ablation.py --skip-train --local --scales m
+  #   zip -r fair_<ts>.zip runs/outputs/fair_<ts>
+  # local replot (after unpacking):
+  #   python script/run_ablation.py --replot fair_<ts>
         """,
     )
 
     # --- common args ---
     parser.add_argument("--recipe", type=Path, default=DEFAULT_RECIPE, help="recipe YAML path")
-    parser.add_argument("--scales", type=str, nargs="+", default=None, help="override recipe scales")
+    parser.add_argument("--scale", type=str, default=None,
+                        help="scales concatenated, e.g. 'm' or 'nsm'; default: recipe scales")
     parser.add_argument("--models", type=str, nargs="+", default=None, help="override recipe models")
     parser.add_argument("--skip-train", action="store_true", help="skip training, only collect + plot")
-    parser.add_argument(
-        "--source", type=str, default="runs", choices=["runs", "outputs"],
-        help="where to read stage2 results: 'runs' (fce-yolo/runs/detect, default, "
-             "workstation after training) or 'outputs' (fce-yolo/runs/outputs, "
-             "after unpacking a workstation zip locally)",
-    )
-    parser.add_argument(
-        "--local", action="store_true",
-        help="local mode: write the organized outputs (comparison tables/figures/README) "
-             "to the Chinese project dir (实验/论文正式实验/main_ablation_fair). "
-             "Default (workstation) writes to fce-yolo/runs/outputs (English, in-repo).",
-    )
+    parser.add_argument("--replot", type=str, default=None, metavar="TIMESTAMP",
+                        help="re-generate figures from an existing run dir "
+                             "(e.g. fair_20260702_153000); reads <run_dir>/<scale>/0X_*/stage2, "
+                             "writes figures/README back to the same dir")
     parser.add_argument("--dry-run", action="store_true", help="print matrix only, no training")
 
     return parser.parse_args()
