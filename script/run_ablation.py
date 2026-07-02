@@ -90,17 +90,22 @@ def load_recipe(yaml_path: Path) -> dict:
 # ============================================================
 
 def build_model_cfg_with_fairness(model_key: str, recipe: dict) -> ModelConfig:
-    """给任意 model（含 baseline）注入统一的两阶段配置。
+    """给任意 model 注入统一的训练配置（单阶段或两阶段，由配方决定）。
 
-    - 所有模型统一 stage1 + stage2 + freeze（含 baseline，实现公平对齐）
-    - 不改 config.py 全局 MODEL_CONFIGS，返回新对象
+    - recipe.freeze == 0 或 recipe.stage1.epochs == 0 时：单阶段（stage1=None），
+      所有模型走 config.py 的单阶段分支，排除 freeze 对新增模块的干扰。
+    - 否则：两阶段，统一 stage1 + stage2 + freeze。
+    - 不改 config.py 全局 MODEL_CONFIGS，返回新对象。
     """
     base_cfg = get_model_config(model_key)
+    freeze = recipe["freeze"]
+    stage1_cfg = recipe.get("stage1", {})
+    is_single_stage = (freeze == 0 or stage1_cfg.get("epochs", 50) == 0)
     return replace(
         base_cfg,
-        stage1=StageConfig(**recipe["stage1"]),
+        stage1=None if is_single_stage else StageConfig(**stage1_cfg),
         stage2=StageConfig(**recipe["stage2"]),
-        freeze=recipe["freeze"],
+        freeze=freeze,
     )
 
 
@@ -150,9 +155,15 @@ def print_matrix_preview(recipe: dict, scales: list, models: list):
     # unified variables
     sh = recipe["shared"]
     print(f"\nunified variables:")
-    print(f"  imgsz={sh.get('imgsz')}, batch={sh.get('batch')}, optimizer={sh.get('optimizer')}, lr0(stage2)={recipe['stage2']['lr0']}")
+    print(f"  imgsz={sh.get('imgsz')}, batch={sh.get('batch')}, optimizer={sh.get('optimizer')}, lr0={recipe['stage2']['lr0']}")
     print(f"  seed={sh.get('seed')}, deterministic={sh.get('deterministic')}, degrees={sh.get('degrees')}, cache={sh.get('cache')}")
-    print(f"  two-stage: stage1({recipe['stage1']['epochs']}ep, freeze={recipe['freeze']}) + stage2({recipe['stage2']['epochs']}ep) = {recipe.get('total_epochs', recipe['stage1']['epochs']+recipe['stage2']['epochs'])}ep")
+    # 训练策略描述：单阶段（freeze=0 或 stage1.epochs=0）vs 两阶段
+    freeze = recipe["freeze"]
+    s1_ep = recipe["stage1"]["epochs"]
+    if freeze == 0 or s1_ep == 0:
+        print(f"  training: single-stage ({recipe['stage2']['epochs']}ep, lr0={recipe['stage2']['lr0']}, cos_lr={recipe['stage2']['cos_lr']}, close_mosaic={recipe['stage2']['close_mosaic']}, no freeze)")
+    else:
+        print(f"  training: two-stage stage1({s1_ep}ep, freeze={freeze}) + stage2({recipe['stage2']['epochs']}ep) = {recipe.get('total_epochs', s1_ep+recipe['stage2']['epochs'])}ep")
     print(f"  IoU mapping: {recipe.get('iou_override', {})}")
     print(f"  export_root: {PROJECT_ROOT / recipe.get('export_root', 'fair_runs')}")
     print(f"  output: {PAPER_ROOT / recipe['output_root']}")
@@ -234,31 +245,37 @@ def run_one_experiment(model_key: str, scale: str, recipe: dict) -> dict:
     """
     # 断点续跑
     if is_experiment_complete(scale, model_key, recipe):
-        s2 = _stage2_run_dir(model_key, scale)
-        s1 = Path(str(s2).replace("_stage2", "_stage1"))
-        print(f"✓ 已完成，跳过 {scale}/{model_key}")
-        return {"stage1": s1, "stage2": s2}
+        final = _stage2_run_dir(model_key, scale)
+        # 单阶段无 stage1，返回 None 占位以保持返回结构一致
+        s1 = Path(str(final).replace("_stage2", "_stage1")) if "_stage2" in final.name else None
+        print(f"✓ done, skip {scale}/{model_key}")
+        return {"stage1": s1, "stage2": final}
 
     # 公平注入
     model_cfg = build_model_cfg_with_fairness(model_key, recipe)
     config = build_train_config(recipe, model_key)
 
-    print(f"\n▶ 训练 {scale}/{model_key}  (iou={config.iou_type})")
+    print(f"\n> train {scale}/{model_key}  (iou={config.iou_type})")
     trainer = YOLOv11Trainer(model_cfg, scale, config)
-    result = trainer.train()  # 两阶段 -> {"stage1":..., "stage2":...}
+    result = trainer.train()
+    # 单阶段返回 Path，两阶段返回 {"stage1":..., "stage2":...}；统一成 dict 结构
+    if isinstance(result, dict):
+        result_dict = result
+    else:
+        result_dict = {"stage1": None, "stage2": result}
 
     # IoU 校验（仅 fce_wiou 等非 CIoU 模型严格校验）
     iou_override = recipe.get("iou_override", {}) or {}
     expected_iou = iou_override.get(model_key, "CIoU")
     if expected_iou != "CIoU":
-        s2_dir = result["stage2"]
+        s2_dir = result_dict["stage2"]
         if not verify_iou_type(s2_dir, expected_iou):
             raise RuntimeError(
-                f"{model_key} 训练后 IoU 校验失败：args.yaml 未记录 {expected_iou}，"
-                f"可能退化成 CIoU，请检查配方 iou_override 与 build_train_config"
+                f"{model_key} IoU verify failed: args.yaml not {expected_iou}, "
+                f"may degrade to CIoU, check recipe iou_override & build_train_config"
             )
 
-    return result
+    return result_dict
 
 
 # ============================================================
@@ -266,13 +283,12 @@ def run_one_experiment(model_key: str, scale: str, recipe: dict) -> dict:
 # ============================================================
 
 def _stage2_run_dir(model_key: str, scale: str) -> Path:
-    """返回 runs/detect 下某 (scale, model) 的 stage2 目录路径。
+    """返回 runs/detect 下某 (scale, model) 的最终结果目录路径。
 
-    统一 baseline 特例（其 result_pattern 无 _stage2 后缀，但公平注入后训练会生成
-    baseline_yolo11{scale}_stage2）。集中在此，避免多处重复。
+    单阶段（stage1=None）：目录名即 result_pattern（如 baseline_yolo11m、bifpn_m）。
+    两阶段：result_pattern 含 _stage2 后缀（如 bifpn_m_stage2）。
+    统一从 config.py 的 result_pattern 推导，无需 baseline 特例。
     """
-    if model_key == "baseline":
-        return Path("runs/detect") / f"baseline_yolo11{scale}_stage2"
     base_cfg = get_model_config(model_key)
     return Path("runs/detect") / base_cfg.result_pattern.format(scale=scale)
 
@@ -673,9 +689,16 @@ def generate_readme(recipe: dict, all_results: dict):
     lines.append("## Recipe\n")
     lines.append(f"- scales: {', '.join(recipe['scales'])}")
     lines.append(f"- models: {' / '.join(MODEL_DISPLAY[m][1] for m in recipe['models'])}")
-    lines.append(f"- **all two-stage**: stage1({recipe['stage1']['epochs']}ep, freeze={recipe['freeze']}, lr0={recipe['stage1']['lr0']}) + stage2({recipe['stage2']['epochs']}ep, lr0={recipe['stage2']['lr0']}, cos_lr={recipe['stage2']['cos_lr']}) = {recipe.get('total_epochs','?')}ep")
+    # 训练策略描述：单阶段 vs 两阶段
+    freeze = recipe["freeze"]
+    s1 = recipe.get("stage1", {})
+    s2 = recipe["stage2"]
+    if freeze == 0 or s1.get("epochs", 0) == 0:
+        lines.append(f"- **single-stage**: {s2['epochs']}ep, lr0={s2['lr0']}, cos_lr={s2['cos_lr']}, close_mosaic={s2['close_mosaic']}, no freeze (excludes freeze interference on the new attention module)")
+    else:
+        lines.append(f"- **all two-stage**: stage1({s1['epochs']}ep, freeze={freeze}, lr0={s1.get('lr0','?')}) + stage2({s2['epochs']}ep, lr0={s2['lr0']}, cos_lr={s2['cos_lr']}) = {recipe.get('total_epochs','?')}ep")
+        lines.append(f"- **baseline also two-stage** (fair alignment: fully symmetric with the FCE structure)")
     lines.append(f"- unified variables: seed={sh.get('seed')}, deterministic={sh.get('deterministic')}, degrees={sh.get('degrees')}, optimizer={sh.get('optimizer')}, imgsz={sh.get('imgsz')}, batch={sh.get('batch')}, cache={sh.get('cache')}")
-    lines.append(f"- **baseline also two-stage** (fair alignment: fully symmetric with the FCE structure)")
     lines.append(f"- IoU mapping: {recipe.get('iou_override', {})}\n")
 
     lines.append("## Real metrics\n")

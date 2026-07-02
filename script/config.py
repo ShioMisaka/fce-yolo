@@ -145,6 +145,13 @@ def get_model_config(model_type: str) -> ModelConfig:
 
 
 # ==================== 模型配置表 ====================
+#
+# 训练策略（2026-07-02 修订）：
+# 全部 4 组改为【单阶段训练】，不再 freeze backbone。
+# 理由：fair 实验发现 freeze=10 压制了 FCE 新增的注意力模块（baseline +3.5 但 FCE -2.3）。
+#       freeze 阶段冻结 backbone 前 10 层时，注意力模块（层5/8）被冻结无法训练，
+#       stage2 解冻后又因 lr 过小训不动新初始化的注意力。单阶段排除该干扰。
+# 旧版 main_ablation_m 的 ①②③ 就是接近单阶段跑出递增（+7.45 mAP50-95）。
 
 MODEL_CONFIGS: Dict[str, ModelConfig] = {
     "baseline": ModelConfig(
@@ -162,24 +169,20 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         yaml_path="ultralytics/cfg/models/11/yolo11-bifpn.yaml",
         color="#042AFF",
         display_name=lambda s: f"YOLOv11{s.upper()}-BiFPN",
-        freeze=10,
-        stage1=StageConfig(epochs=50, patience=20, lr0=0.01,
-                           cos_lr=False, close_mosaic=10),
+        stage1=None,
         stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
                            cos_lr=True, close_mosaic=20),
-        result_pattern="bifpn_{scale}_stage2",
+        result_pattern="bifpn_{scale}",
     ),
     "fce": ModelConfig(
         name="fce",
         yaml_path="ultralytics/cfg/models/11/yolo11-fce.yaml",
         color="#FF6B00",
         display_name=lambda s: f"YOLOv11{s.upper()}-FCE",
-        freeze=10,
-        stage1=StageConfig(epochs=50, patience=20, lr0=0.01,
-                           cos_lr=False, close_mosaic=10),
+        stage1=None,
         stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
                            cos_lr=True, close_mosaic=20),
-        result_pattern="fce_{scale}_stage2",
+        result_pattern="fce_{scale}",
     ),
     # 完整 FCE（含 WIoU 损失），结构与 fce 相同，仅损失函数不同，
     # 结果目录单独命名以避免覆盖 CIoU 版 FCE 的实验。
@@ -189,12 +192,10 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         yaml_path="ultralytics/cfg/models/11/yolo11-fce.yaml",
         color="#E91E63",
         display_name=lambda s: f"YOLOv11{s.upper()}-FCE(WIoU)",
-        freeze=10,
-        stage1=StageConfig(epochs=50, patience=20, lr0=0.01,
-                           cos_lr=False, close_mosaic=10),
+        stage1=None,
         stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
                            cos_lr=True, close_mosaic=20),
-        result_pattern="fce_wiou_{scale}_stage2",
+        result_pattern="fce_wiou_{scale}",
     ),
 }
 

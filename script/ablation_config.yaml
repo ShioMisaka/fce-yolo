@@ -30,20 +30,20 @@ shared:
   degrees: 10.0         # 统一数据增强（修复旧版 ④ 关掉 degrees 的不一致）
   # 其余增强用 ultralytics 默认（hsv/flip/mosaic 等）
 
-# ===== 两阶段预算（4 组完全相同，总 300ep）=====
-stage1:                 # 冻结 backbone freeze=10，只预热新模块/检测头
-  epochs: 50
-  lr0: 0.01
-  cos_lr: false
-  patience: 20
-  close_mosaic: 10
-stage2:                 # 全网络微调
-  epochs: 250           # 50 + 250 = 300 总预算
+# ===== 单阶段训练预算（2026-07-02 修订，原两阶段取消）=====
+# 理由：fair 实验发现 freeze=10 压制了 FCE 新增的注意力模块。
+#       全部 4 组改单阶段 300ep，排除 freeze 干扰，对齐旧版 main_ablation_m 的训练方式。
+# config.py 里 4 个 ModelConfig 也已改为 stage1=None（单阶段），这里 stage1 段仅保留文档用途
+# （build_model_cfg_with_fairness 会注入，但因 stage1=None，trainer 走单阶段分支不使用 stage1）。
+stage1:
+  epochs: 0
+stage2:                 # 单阶段实际使用的配置
+  epochs: 300           # 单阶段总预算
   lr0: 0.001
   cos_lr: true
   patience: 50
   close_mosaic: 20
-freeze: 10              # 所有模型 stage1 都冻结前 10 层（含 baseline）
+freeze: 0               # 不冻结（单阶段）
 
 # ===== 实验矩阵 =====
 # 注意：n 尺度 FCE 是负增益（容量不足，注意力模块过参数化），历史数据
