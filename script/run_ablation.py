@@ -43,9 +43,45 @@ from script.config import (  # noqa: E402
 from script.analysis import load_results, extract_metrics  # noqa: E402
 from script.trainer import YOLOv11Trainer  # noqa: E402
 
-# 论文项目根（Visual Guidance Robotic Arm/，fce-yolo 上一级）
+# 论文项目根（Visual Guidance Robotic Arm/，fce-yolo 上一级，仅 --local 模式用）
 PAPER_ROOT = PROJECT_ROOT.parent
 DEFAULT_RECIPE = PROJECT_ROOT / "script" / "ablation_config.yaml"
+
+# 工作站整理产物根（英文，fce-yolo 仓库内，便于打包 zip 回传）
+# 训练在 runs/detect（ultralytics 原生）；整理（对比表/图表/README）在 runs/outputs
+WORK_OUTPUT_ROOT = PROJECT_ROOT / "runs" / "outputs"
+
+
+def get_output_root(local: bool, recipe: dict) -> Path:
+    """返回整理产物（对比表/图表/README）的写入根。
+
+    - local=False（工作站默认）：返回 PROJECT_ROOT/runs/outputs（英文，仓库内）
+    - local=True（本地 --local）：返回 PAPER_ROOT/recipe['output_root']（中文项目目录，Windows OK）
+
+    这样工作站全程不碰中文路径，打包 `zip runs/` 回传；本地解压后再搬到中文目录。
+    """
+    if local:
+        return PAPER_ROOT / recipe["output_root"]
+    return WORK_OUTPUT_ROOT
+
+
+def _rel(p: Path) -> Path:
+    """返回相对 PROJECT_ROOT 或 PAPER_ROOT 的路径（双根兼容，用于打印）。
+
+    工作站产物在 PROJECT_ROOT/runs/outputs，本地 --local 产物在 PAPER_ROOT/中文目录。
+    """
+    try:
+        return p.relative_to(PROJECT_ROOT)
+    except ValueError:
+        try:
+            return p.relative_to(PAPER_ROOT)
+        except ValueError:
+            return p
+
+
+def _rel_posix(p: Path) -> str:
+    """同 _rel 但返回 posix 风格字符串（正斜杠），用于写入 YAML 避免分隔符混乱。"""
+    return _rel(p).as_posix()
 
 
 # ============================================================
@@ -138,8 +174,10 @@ def build_train_config(recipe: dict, model_key: str) -> TrainConfig:
 # 预览
 # ============================================================
 
-def print_matrix_preview(recipe: dict, scales: list, models: list):
+def print_matrix_preview(recipe: dict, scales: list, models: list, output_root: Path = None):
     """Print the experiment matrix + unified-variable summary for review."""
+    if output_root is None:
+        output_root = WORK_OUTPUT_ROOT
     print("\n" + "=" * 80)
     print("Fair ablation matrix preview")
     print("=" * 80)
@@ -165,8 +203,7 @@ def print_matrix_preview(recipe: dict, scales: list, models: list):
     else:
         print(f"  training: two-stage stage1({s1_ep}ep, freeze={freeze}) + stage2({recipe['stage2']['epochs']}ep) = {recipe.get('total_epochs', s1_ep+recipe['stage2']['epochs'])}ep")
     print(f"  IoU mapping: {recipe.get('iou_override', {})}")
-    print(f"  export_root: {PROJECT_ROOT / recipe.get('export_root', 'fair_runs')}")
-    print(f"  output: {PAPER_ROOT / recipe['output_root']}")
+    print(f"  output_root: {output_root}")
     print("\n(--dry-run previews only; drop it to start training)")
     print("=" * 80 + "\n")
 
@@ -297,13 +334,12 @@ def _resolve_stage2_source(model_key: str, scale: str, source: str, recipe: dict
     """Resolve where to read stage2 results from.
 
     source:
-      - "runs"      -> fce-yolo/runs/detect/<exp>_stage2 (training-machine default)
-      - "fair_runs" -> fce-yolo/<export_root>/<scale>/<0X_name>/stage2 (the English
-                       export package, used locally after unpacking a workstation tar)
+      - "runs"    -> fce-yolo/runs/detect/<exp> (workstation default, just trained)
+      - "outputs" -> fce-yolo/runs/outputs/<scale>/<0X_name>/stage2 (after unpacking
+                     a workstation zip locally; the zip carries runs/outputs)
     """
-    if source == "fair_runs":
-        export_root = PROJECT_ROOT / recipe.get("export_root", "fair_runs")
-        return export_root / scale / get_model_dir_name(model_key, scale) / "stage2"
+    if source == "outputs":
+        return WORK_OUTPUT_ROOT / scale / get_model_dir_name(model_key, scale) / "stage2"
     # default: runs/detect (relative to PROJECT_ROOT for portability)
     s2 = _stage2_run_dir(model_key, scale)
     if not s2.is_absolute():
@@ -311,14 +347,16 @@ def _resolve_stage2_source(model_key: str, scale: str, source: str, recipe: dict
     return s2
 
 
-def archive_one(scale: str, model_key: str, recipe: dict, source: str = "runs"):
+def archive_one(scale: str, model_key: str, recipe: dict, source: str = "runs",
+                output_root: Path = None):
     """把 stage2 结果复制到 output_root/<scale>/0X_<name>/stage2。
 
-    source 见 _resolve_stage2_source。默认仅复制 stage2（copy_stage1: false）；
-    目录自包含、可独立归档。
+    source 见 _resolve_stage2_source。output_root 为 None 时用 WORK_OUTPUT_ROOT。
+    默认仅复制 stage2（copy_stage1: false）；目录自包含、可独立归档。
     """
     import shutil
-    output_root = PAPER_ROOT / recipe["output_root"]
+    if output_root is None:
+        output_root = WORK_OUTPUT_ROOT
     scale_dir = output_root / scale
     model_dir_name = get_model_dir_name(model_key, scale)
     dst_model_dir = scale_dir / model_dir_name
@@ -334,7 +372,7 @@ def archive_one(scale: str, model_key: str, recipe: dict, source: str = "runs"):
         if dst_s2.exists():
             shutil.rmtree(dst_s2)
         shutil.copytree(str(s2_src), str(dst_s2))
-        print(f"  + stage2 -> {dst_s2.relative_to(PAPER_ROOT)}")
+        print(f"  + stage2 -> {_rel(dst_s2)}")
     else:
         print(f"  warn: stage2 source missing: {s2_src}")
 
@@ -346,26 +384,29 @@ def archive_one(scale: str, model_key: str, recipe: dict, source: str = "runs"):
             if dst_s1.exists():
                 shutil.rmtree(dst_s1)
             shutil.copytree(str(s1_src), str(dst_s1))
-            print(f"  + stage1 -> {dst_s1.relative_to(PAPER_ROOT)}")
+            print(f"  + stage1 -> {_rel(dst_s1)}")
 
     return dst_s2
 
 
-def collect_results(scales: list, models: list, recipe: dict, source: str = "runs") -> dict:
+def collect_results(scales: list, models: list, recipe: dict, source: str = "runs",
+                    output_root: Path = None) -> dict:
     """遍历 (scale, model)，复制结果并汇总 results.csv 路径。
 
     Returns:
         {scale: {model_key: {"stage2_dir": Path, "csv": Path, "df": DataFrame, "metrics": dict}}}
     """
+    if output_root is None:
+        output_root = WORK_OUTPUT_ROOT
     print("\n" + "=" * 80)
-    print(f"Stage 2: collect training results (source={source})")
+    print(f"Stage 2: collect training results (source={source}, output={_rel(output_root)})")
     print("=" * 80)
 
     all_results = {}
     for scale in scales:
         all_results[scale] = {}
         for model_key in models:
-            dst_s2 = archive_one(scale, model_key, recipe, source=source)
+            dst_s2 = archive_one(scale, model_key, recipe, source=source, output_root=output_root)
             csv = dst_s2 / "results.csv"
             if not csv.exists():
                 print(f"  warn: results.csv missing: {csv}")
@@ -414,9 +455,11 @@ def compute_params_gflops(best_pt: Path, imgsz: int = 1280) -> tuple:
         return None, None
 
 
-def write_comparison_table(scale: str, scale_results: dict, recipe: dict):
+def write_comparison_table(scale: str, scale_results: dict, recipe: dict,
+                           output_root: Path = None):
     """为单尺度生成对比表 CSV + MD（按 best 指标，含 Δ 列）。"""
-    output_root = PAPER_ROOT / recipe["output_root"]
+    if output_root is None:
+        output_root = WORK_OUTPUT_ROOT
     cmp_dir = output_root / "comparison"
     cmp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -461,7 +504,7 @@ def write_comparison_table(scale: str, scale_results: dict, recipe: dict):
     df = pd.DataFrame(rows)
     csv_path = cmp_dir / f"{scale}_comparison_summary.csv"
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    print(f"  + {csv_path.relative_to(PAPER_ROOT)}")
+    print(f"  + {_rel(csv_path)}")
 
     # MD (with data-integrity disclaimer)
     md_path = cmp_dir / f"{scale}_comparison_summary.md"
@@ -484,14 +527,15 @@ def write_comparison_table(scale: str, scale_results: dict, recipe: dict):
                     f"{fmt(row['mAP50_95'])} | {fmt(row['d_mAP50_95']) if row['d_mAP50_95']!='' else '-'} | "
                     f"{fmt(row['Params(M)'],2) if row['Params(M)'] else 'N/A'} | "
                     f"{fmt(row['GFLOPs'],1) if row['GFLOPs'] else 'N/A'} | {row['Total_Ep']} |\n")
-    print(f"  + {md_path.relative_to(PAPER_ROOT)}")
+    print(f"  + {_rel(md_path)}")
     return df
 
 
-def write_cross_scale_summary(all_results: dict, recipe: dict):
+def write_cross_scale_summary(all_results: dict, recipe: dict, output_root: Path = None):
     """Cross-scale summary: best-mAP50-95 matrix of each model across n/s/m, to
     inspect scale-stability of the improvement."""
-    output_root = PAPER_ROOT / recipe["output_root"]
+    if output_root is None:
+        output_root = WORK_OUTPUT_ROOT
     cmp_dir = output_root / "comparison"
     cmp_dir.mkdir(parents=True, exist_ok=True)
     import pandas as pd
@@ -508,7 +552,7 @@ def write_cross_scale_summary(all_results: dict, recipe: dict):
     df = pd.DataFrame(rows)
     csv = cmp_dir / "cross_scale_summary.csv"
     df.to_csv(csv, index=False, encoding="utf-8-sig")
-    print(f"  ✓ {csv.relative_to(PAPER_ROOT)}")
+    print(f"  + {_rel(csv)}")
     return df
 
 
@@ -516,13 +560,17 @@ def write_cross_scale_summary(all_results: dict, recipe: dict):
 # paper_figs 衔接
 # ============================================================
 
-def generate_paper_figs_config(scale: str, recipe: dict) -> Path:
+def generate_paper_figs_config(scale: str, recipe: dict, output_root: Path = None) -> Path:
     """为指定尺度生成适配 main_ablation_fair 的 paper_figs_config YAML。
 
-    复用 paper_figs.py 的配置驱动机制，零重复造轮子。
-    display/loss 从 MODEL_DISPLAY 派生（单一事实来源，保证表与图例标签一致）；
-    color/linestyle/fce_module 为 paper_figs 渲染专用配置。
+    output_root 决定 dir/out_dir 的相对前缀（工作站 runs/outputs 或本地中文目录）。
+    paper_figs.py 的 _resolve_path 会按 PROJECT_ROOT→PAPER_ROOT 顺序解析，所以这里
+    写成"相对 output_root 所在根"的路径即可两边都对齐。
     """
+    if output_root is None:
+        output_root = WORK_OUTPUT_ROOT
+    # output_root 相对其所在根（PROJECT_ROOT 或 PAPER_ROOT）的相对前缀（posix 正斜杠）
+    out_prefix = _rel_posix(output_root)
     cfg_dir = PROJECT_ROOT / "script"
     cfg_path = cfg_dir / f"paper_figs_config_fair_{scale}.yaml"
 
@@ -537,7 +585,7 @@ def generate_paper_figs_config(scale: str, recipe: dict) -> Path:
     for order, key in enumerate(["baseline", "bifpn", "fce", "fce_wiou"], start=1):
         seq, display, loss = MODEL_DISPLAY[key]
         experiments[key] = {
-            "dir": f"{recipe['output_root']}/{scale}/{get_model_dir_name(key, scale)}/stage2",
+            "dir": f"{out_prefix}/{scale}/{get_model_dir_name(key, scale)}/stage2",
             "display": display,
             "loss": loss,
             "order": order,
@@ -545,8 +593,7 @@ def generate_paper_figs_config(scale: str, recipe: dict) -> Path:
         }
     settings = {
         "imgsz": recipe["shared"].get("imgsz", 1280),
-        # 英文目录名，保证 Linux 工作站能正常创建/打包
-        "out_dir": f"{recipe['output_root']}/figures/{scale}",
+        "out_dir": f"{out_prefix}/figures/{scale}",
         "convergence_threshold": 0.75,
         # 类名英文化（避免 Linux 无 CJK 字体时混淆矩阵标注渲染异常）
         "class_names": ["round_base", "square_part"],
@@ -555,18 +602,18 @@ def generate_paper_figs_config(scale: str, recipe: dict) -> Path:
     cfg = {"experiments": experiments, "settings": settings}
     with open(cfg_path, "w", encoding="utf-8") as f:
         yaml.dump(cfg, f, allow_unicode=True, sort_keys=False)
-    print(f"  + paper_figs config: {cfg_path.relative_to(PROJECT_ROOT)}")
+    print(f"  + paper_figs config: {_rel(cfg_path)}")
     return cfg_path
 
 
-def generate_figures(scales: list, recipe: dict):
+def generate_figures(scales: list, recipe: dict, output_root: Path = None):
     """为每个尺度调用 paper_figs.py 出图（A/B/C/D 全套）。"""
     print("\n" + "=" * 80)
     print("Stage 4: generate figures (paper_figs.py)")
     print("=" * 80)
     import subprocess
     for scale in scales:
-        cfg_path = generate_paper_figs_config(scale, recipe)
+        cfg_path = generate_paper_figs_config(scale, recipe, output_root=output_root)
         cmd = [
             sys.executable, "script/paper_figs.py",
             "--config", str(cfg_path),
@@ -581,102 +628,14 @@ def generate_figures(scales: list, recipe: dict):
 
 
 # ============================================================
-# export 子命令：把 runs/detect 产物打包成英文目录，便于跨平台回传
-# ============================================================
-
-def run_export(scales: list, models: list, recipe: dict):
-    """把 runs/detect 下各 (scale, model) 的 stage2 复制到 <export_root>/<scale>/。
-
-    用途：在 Linux 训练工作站上训练完成后，运行本子命令把结果整理到一个纯英文
-    目录（相对 fce-yolo 仓库根），然后 tar/zip 回传本地，本地再用
-    `--skip-train --source fair_runs` 整理+出图。彻底解耦训练机路径（中文 项目目录）
-    与结果归档目录。
-
-    每个 (scale, model) 的 stage2 复制到：
-        <export_root>/<scale>/<0X_name>/stage2/
-    并在该 scale 目录下写一份 MANIFEST.txt 记录源路径、行数、best 指标，便于核对。
-    """
-    import shutil
-    import pandas as pd
-
-    export_root = PROJECT_ROOT / recipe.get("export_root", "fair_runs")
-    export_root.mkdir(parents=True, exist_ok=True)
-
-    for scale in scales:
-        scale_dir = export_root / scale
-        scale_dir.mkdir(parents=True, exist_ok=True)
-        manifest_lines = [
-            f"# MANIFEST for scale={scale}",
-            f"# generated by run_ablation.py export",
-            f"# source: runs/detect/<exp>_stage2",
-            f"# export root: {export_root}",
-            "",
-        ]
-        for model_key in models:
-            model_dir_name = get_model_dir_name(model_key, scale)
-            dst_model_dir = scale_dir / model_dir_name
-            s2_src = _stage2_run_dir(model_key, scale)
-            if not s2_src.is_absolute():
-                s2_src = PROJECT_ROOT / s2_src
-            dst_s2 = dst_model_dir / "stage2"
-
-            if not s2_src.exists():
-                msg = f"  warn: source missing, skipped: {s2_src}"
-                print(msg)
-                manifest_lines.append(f"[{model_key}] {model_dir_name}: MISSING ({s2_src})")
-                continue
-
-            if dst_s2.exists():
-                shutil.rmtree(dst_s2)
-            shutil.copytree(str(s2_src), str(dst_s2))
-
-            # 记录核对信息：行数 + best 指标
-            csv = dst_s2 / "results.csv"
-            n_rows = 0
-            best_str = "n/a"
-            if csv.exists():
-                try:
-                    df = pd.read_csv(csv)
-                    n_rows = len(df)
-                    if "metrics/mAP50-95(B)" in df.columns:
-                        bi = df["metrics/mAP50-95(B)"].idxmax()
-                        br = df.loc[bi]
-                        best_str = (
-                            f"best@ep{int(br['epoch'])} "
-                            f"P={br['metrics/precision(B)']:.4f} "
-                            f"R={br['metrics/recall(B)']:.4f} "
-                            f"mAP50={br['metrics/mAP50(B)']:.4f} "
-                            f"mAP50-95={br['metrics/mAP50-95(B)']:.4f}"
-                        )
-                except Exception as ex:
-                    best_str = f"read error: {ex}"
-
-            print(f"  + {model_dir_name}/stage2 ({n_rows} rows, {best_str})")
-            manifest_lines.append(
-                f"[{model_key}] {model_dir_name}: {n_rows} rows | {best_str}"
-            )
-
-        manifest_path = scale_dir / "MANIFEST.txt"
-        manifest_path.write_text("\n".join(manifest_lines) + "\n", encoding="utf-8")
-        print(f"  + {manifest_path.relative_to(PROJECT_ROOT)}")
-
-    print("\n" + "=" * 80)
-    print("Export done.")
-    print(f"  export root: {export_root}")
-    for scale in scales:
-        print(f"  pack scale {scale}:  tar -czf fair_runs_{scale}.tar.gz "
-              f"{export_root.relative_to(PROJECT_ROOT)}/{scale}")
-    print("=" * 80)
-
-
-# ============================================================
 # README 自动生成
 # ============================================================
 
-def generate_readme(recipe: dict, all_results: dict):
-    """Generate main_ablation_fair/README.md (recipe summary + real metrics +
+def generate_readme(recipe: dict, all_results: dict, output_root: Path = None):
+    """Generate <output_root>/README.md (recipe summary + real metrics +
     diff vs the legacy main_ablation_m)."""
-    output_root = PAPER_ROOT / recipe["output_root"]
+    if output_root is None:
+        output_root = WORK_OUTPUT_ROOT
     output_root.mkdir(parents=True, exist_ok=True)  # ensure dir exists on full failure
     readme = output_root / "README.md"
     sh = recipe["shared"]
@@ -706,7 +665,7 @@ def generate_readme(recipe: dict, all_results: dict):
         if scale in all_results and all_results[scale]:
             md_path = output_root / "comparison" / f"{scale}_comparison_summary.md"
             lines.append(f"### Scale {scale.upper()}")
-            lines.append(f"See `{md_path.relative_to(PAPER_ROOT)}`.\n")
+            lines.append(f"See `{_rel(md_path)}`.\n")
 
     lines.append("## Diff vs legacy main_ablation_m\n")
     lines.append("- **legacy `main_ablation_m/`**: variables not unified (baseline single-stage / lr0=0.01, M4 with degrees off, inconsistent cache/deterministic, etc.), kept only for historical reference, now archived.")
@@ -721,7 +680,7 @@ def generate_readme(recipe: dict, all_results: dict):
 
     with open(readme, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
-    print(f"  + {readme.relative_to(PAPER_ROOT)}")
+    print(f"  + {_rel(readme)}")
 
 
 # ============================================================
@@ -733,38 +692,36 @@ def parse_args() -> argparse.Namespace:
         description="Fair ablation orchestrator (one-click train 4 models x scales)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-examples:
+examples (workstation, default):
   python script/run_ablation.py --dry-run            # preview matrix only
+  python script/run_ablation.py --scales m           # train m, output -> runs/outputs/m
   python script/run_ablation.py                      # train full recipe
-  python script/run_ablation.py --scales m           # train m only
-  python script/run_ablation.py export --scales m    # pack runs/ -> fair_runs/m
-  python script/run_ablation.py --skip-train --source fair_runs --scales m
+  # after finish, pack for transfer:
+  #   zip -r fair_runs_m.zip runs/outputs runs/detect
+
+examples (local, after unpacking the zip into fce-yolo/):
+  python script/run_ablation.py --skip-train --local --scales m
         """,
     )
-    sub = parser.add_subparsers(dest="command")
 
-    # --- common args (top-level, used when no subcommand) ---
+    # --- common args ---
     parser.add_argument("--recipe", type=Path, default=DEFAULT_RECIPE, help="recipe YAML path")
     parser.add_argument("--scales", type=str, nargs="+", default=None, help="override recipe scales")
     parser.add_argument("--models", type=str, nargs="+", default=None, help="override recipe models")
     parser.add_argument("--skip-train", action="store_true", help="skip training, only collect + plot")
     parser.add_argument(
-        "--source", type=str, default="runs", choices=["runs", "fair_runs"],
-        help="where to read stage2 results when collecting: "
-             "'runs' (fce-yolo/runs/detect, default) or 'fair_runs' "
-             "(the English export package, for local use after unpacking a workstation tar)",
+        "--source", type=str, default="runs", choices=["runs", "outputs"],
+        help="where to read stage2 results: 'runs' (fce-yolo/runs/detect, default, "
+             "workstation after training) or 'outputs' (fce-yolo/runs/outputs, "
+             "after unpacking a workstation zip locally)",
+    )
+    parser.add_argument(
+        "--local", action="store_true",
+        help="local mode: write the organized outputs (comparison tables/figures/README) "
+             "to the Chinese project dir (实验/论文正式实验/main_ablation_fair). "
+             "Default (workstation) writes to fce-yolo/runs/outputs (English, in-repo).",
     )
     parser.add_argument("--dry-run", action="store_true", help="print matrix only, no training")
-
-    # --- export subcommand ---
-    p_export = sub.add_parser(
-        "export",
-        help="pack runs/detect/<exp>_stage2 into <export_root>/<scale>/ (English), "
-             "for transferring from a Linux workstation back to local",
-    )
-    p_export.add_argument("--recipe", type=Path, default=DEFAULT_RECIPE, help="recipe YAML path")
-    p_export.add_argument("--scales", type=str, nargs="+", default=None, help="override recipe scales")
-    p_export.add_argument("--models", type=str, nargs="+", default=None, help="override recipe models")
 
     return parser.parse_args()
 
@@ -773,22 +730,16 @@ def main():
     args = parse_args()
     recipe = load_recipe(args.recipe)
 
-    # --- export subcommand: only pack, no train/collect/plot ---
-    if args.command == "export":
-        scales = args.scales or recipe["scales"]
-        models = args.models or recipe["models"]
-        run_export(scales, models, recipe)
-        return
-
     scales = args.scales or recipe["scales"]
     models = args.models or recipe["models"]
+    output_root = get_output_root(args.local, recipe)
 
-    print_matrix_preview(recipe, scales, models)
+    print_matrix_preview(recipe, scales, models, output_root)
     if args.dry_run:
         return
 
-    # Stage 1: train
-    if not args.skip_train:
+    # Stage 1: train (workstation only; --local implies --skip-train)
+    if not args.skip_train and not args.local:
         print("\n" + "=" * 80)
         print("Stage 1: training")
         print("=" * 80)
@@ -802,15 +753,16 @@ def main():
                     run_one_experiment(model_key, scale, recipe)
                 except Exception as e:
                     print(f"x {scale}/{model_key} failed: {e}")
-                    failed_log = PAPER_ROOT / recipe["output_root"] / "failed.log"
+                    failed_log = WORK_OUTPUT_ROOT / "failed.log"
                     failed_log.parent.mkdir(parents=True, exist_ok=True)
                     with open(failed_log, "a", encoding="utf-8") as f:
                         f.write(f"{scale}/{model_key}: {e}\n")
     else:
-        print("warn: --skip-train: skipping training")
+        print("warn: skipping training")
 
     # Stage 2: collect results (respect --source)
-    all_results = collect_results(scales, models, recipe, source=args.source)
+    all_results = collect_results(scales, models, recipe, source=args.source,
+                                  output_root=output_root)
 
     # Stage 3: comparison tables
     print("\n" + "=" * 80)
@@ -818,20 +770,25 @@ def main():
     print("=" * 80)
     for scale in scales:
         if scale in all_results and all_results[scale]:
-            write_comparison_table(scale, all_results[scale], recipe)
-    write_cross_scale_summary(all_results, recipe)
+            write_comparison_table(scale, all_results[scale], recipe, output_root=output_root)
+    write_cross_scale_summary(all_results, recipe, output_root=output_root)
 
     # README
     print("\n> generate README")
-    generate_readme(recipe, all_results)
+    generate_readme(recipe, all_results, output_root=output_root)
 
     # Stage 4: figures
-    generate_figures(scales, recipe)
+    generate_figures(scales, recipe, output_root=output_root)
 
     print("\n" + "=" * 80)
     print("ALL DONE")
     print("=" * 80)
-    print(f"results dir: {PAPER_ROOT / recipe['output_root']}")
+    print(f"results dir: {output_root}")
+    if not args.local:
+        print(f"\nAll in-repo outputs are under: {PROJECT_ROOT / 'runs'}")
+        print("Pack for transfer to local:")
+        print("  zip -r fair_runs.zip runs/outputs runs/detect")
+        print("  # or: tar -czf fair_runs.tar.gz runs/outputs runs/detect")
 
 
 if __name__ == "__main__":

@@ -54,6 +54,33 @@ PAPER_ROOT = PROJECT_ROOT.parent
 # 配置加载
 # ============================================================
 
+def _resolve_path(rel_path: str) -> Path:
+    """把 YAML 里的相对路径解析成绝对路径，双根兼容。
+
+    优先在 PROJECT_ROOT（fce-yolo 仓库根）下找；找不到再回退 PAPER_ROOT
+    （项目根）。这样既能读 runs/outputs（新工作流，工作站产物在仓库内），
+    又能兼容旧 paper_figs_config.yaml 里的中文 `实验/论文正式实验/...` 路径。
+    """
+    p_project = (PROJECT_ROOT / rel_path).resolve()
+    if p_project.exists():
+        return p_project
+    p_paper = (PAPER_ROOT / rel_path).resolve()
+    return p_paper
+
+
+def _detect_root(rel_path: str, reference_abs: Path, reference_rel: str) -> Path:
+    """从已解析的同级路径推断 rel_path 应所在的根。
+
+    reference_abs 已正确解析（如某实验的 abs_dir），reference_rel 是它在 YAML 里的
+    相对路径。两者共享前缀，故 reference_abs 去掉 reference_rel 各级后即得"根"，
+    再拼 rel_path 得到目标绝对路径。用于 out_dir 这类尚不存在、无法靠 exists 判根的路径。
+    """
+    root = reference_abs
+    for _ in Path(reference_rel).parts:
+        root = root.parent
+    return (root / rel_path).resolve()
+
+
 def load_config(config_path):
     """加载 YAML 配置，返回 (experiments, settings)。
 
@@ -69,12 +96,19 @@ def load_config(config_path):
     for key, e in exps.items():
         e = dict(e)
         e["key"] = key
-        e["abs_dir"] = (PAPER_ROOT / e["dir"]).resolve()
+        e["abs_dir"] = _resolve_path(e["dir"])
         exp_list.append(e)
     exp_list.sort(key=lambda x: x["order"])
 
     settings = cfg["settings"]
-    settings["abs_out_dir"] = (PAPER_ROOT / settings["out_dir"]).resolve()
+    # out_dir 与实验 dir 共享前缀（同一 out_prefix），数据在哪根下，图表就写哪根下。
+    # out_dir 尚不存在，无法靠 exists 判根，故从首个已解析的实验路径推断根。
+    if exp_list:
+        settings["abs_out_dir"] = _detect_root(
+            settings["out_dir"], exp_list[0]["abs_dir"], exp_list[0]["dir"]
+        )
+    else:
+        settings["abs_out_dir"] = (PROJECT_ROOT / settings["out_dir"]).resolve()
     return exp_list, settings
 
 

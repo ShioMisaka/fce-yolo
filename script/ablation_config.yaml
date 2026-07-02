@@ -1,18 +1,17 @@
 # 公平消融实验配方（Fair Ablation Recipe）
 # 所有 4 组模型共享的统一变量；修改此文件即可重做实验，无需改代码。
-# 详见 docs/superpowers/specs/2026-07-01-fair-ablation-training-design.md
 #
 # 【工作流】跨机器（Linux 工作站训练 -> Windows 本地整理）：
-#   工作站: python script/run_ablation.py --scales m      # 训练 -> runs/detect
-#           python script/run_ablation.py export --scales m  # 打包 -> <export_root>/m
-#           tar -czf fair_runs_m.tar.gz fce-yolo/<export_root>/m
-#   本地:   解压后 python script/run_ablation.py --skip-train --source fair_runs --scales m
+#   工作站: python script/run_ablation.py --scales m          # 训练 -> runs/detect，整理 -> runs/outputs/m
+#           zip -r fair_runs_m.zip runs/outputs runs/detect    # 打包回传（全英文，在 fce-yolo 仓库内）
+#   本地:   解压 fair_runs_m.zip 到 fce-yolo/ 下（得到 runs/outputs、runs/detect）
+#           python script/run_ablation.py --skip-train --local --scales m
+#           # → 从 runs/outputs 读，整理到 实验/论文正式实验/main_ablation_fair/（中文目录，Windows OK）
 #
-# - export_root: 工作站训练产物打包目录（相对 fce-yolo 仓库根，纯英文）。
-#                训练在 runs/detect 完成，export 子命令把 stage2 复制到此，便于打包回传。
-# - output_root: 本地最终整理目录（相对项目根 Visual Guidance Robotic Arm/）。
-#                本地 --skip-train --source fair_runs 时，从这里读结果、写对比表+图表。
-#                本地是 Windows，路径含中文无妨；工作站只用 export_root，不碰 output_root。
+# 输出根说明（run_ablation.py 自动选择，无需在此配置）：
+# - 工作站（默认）：整理产物 → fce-yolo/runs/outputs/<scale>/（英文，打 zip 回传）
+# - 本地（--local）：从 runs/outputs 读，整理到 实验/论文正式实验/main_ablation_fair/
+# output_root 仅 --local 模式使用，工作站流程不读它。
 
 # ===== 公平对比的统一变量（所有模型共享）=====
 shared:
@@ -57,9 +56,8 @@ iou_override:
   fce_wiou: WIoU
 
 # ===== 输出 =====
-# 工作站打包目录（相对 fce-yolo 仓库根，纯英文，export 子命令写入）
-export_root: fair_runs
-# 本地最终整理目录（相对项目根，Windows 本地用）
+# output_root: 仅 --local 模式（本地 Windows 整理）使用，工作站流程不读。
+# 工作站整理根固定为 fce-yolo/runs/outputs（run_ablation.py 硬编码，无需配置）。
 output_root: 实验/论文正式实验/main_ablation_fair
 copy_stage1: false      # 默认只复制 stage2（节磁盘）；stage1 留 runs/detect/
-total_epochs: 300       # 文档用途 = stage1.epochs + stage2.epochs
+total_epochs: 300       # 文档用途 = stage2.epochs（单阶段）
