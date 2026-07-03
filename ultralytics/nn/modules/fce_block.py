@@ -186,7 +186,12 @@ class BiCoordCrossAtt(nn.Module):
 
     特点：
     1. 对称结构：同时计算 H->W 和 W->H 的注意力，保证两个方向都被增强。
-    2. 效率优化：直接对池化后的特征进行投影，减少不必要的中间卷积。
+    2. 加性门控融合（2026-07-03 修复）：两个分支的注意力向量经线性投影后
+       广播相加，再过单次 Sigmoid 得到完整 [H, W] 门控信号。
+       旧版「双 Sigmoid 相乘」会把主干信号压制到 ≤25%（两个 0.5 相乘），
+       且 weight_h[H,1]*weight_w[1,W] 是秩-1 矩阵、表达力弱，是 5 个尺度
+       里 4 个拉低 mAP 的元凶。改用加性融合后信号保留率与标准 Coordinate
+       Attention 一致（~50%），且 gate=gate_h+gate_w 让行列权重独立可学。
 
     Args:
         inp: 输入通道数
@@ -221,7 +226,8 @@ class BiCoordCrossAtt(nn.Module):
         self.proj_v_w = nn.Conv2d(inp, self.mid_dim, 1)
         self.out_w = nn.Conv2d(self.mid_dim, oup, 1)
 
-        self.activation = nn.Sigmoid()  # 最终生成权重范围 [0, 1]
+        # 单次门控激活（融合后才过 Sigmoid，避免双 sigmoid 相乘压制信号）
+        self.gate = nn.Sigmoid()
 
         # 如果输入输出通道不一致，需要一个 shortcut 变换
         self.identity = nn.Conv2d(inp, oup, 1) if inp != oup else nn.Identity()
@@ -248,7 +254,8 @@ class BiCoordCrossAtt(nn.Module):
 
         # Aggregation: [N, heads, H, W] @ [N, heads, W, C_head] -> [N, heads, H, C_head]
         y_h = (attn_h @ v_h).permute(0, 1, 3, 2).reshape(n, self.mid_dim, h, 1)
-        weight_h = self.activation(self.out_h(y_h))  # [N, oup, H, 1]
+        # 线性投影到 oup，不加激活（留到融合后统一过 Sigmoid）
+        gate_h = self.out_h(y_h)  # [N, oup, H, 1]
 
         # -----------------------
         # Branch 2: 增强 Width 方向 (利用 Height 信息)
@@ -266,9 +273,12 @@ class BiCoordCrossAtt(nn.Module):
 
         # Aggregation: [N, heads, W, H] @ [N, heads, H, C_head] -> [N, heads, W, C_head]
         y_w = (attn_w @ v_w).permute(0, 1, 3, 2).reshape(n, self.mid_dim, 1, w)
-        weight_w = self.activation(self.out_w(y_w))  # [N, oup, 1, W]
+        gate_w = self.out_w(y_w)  # [N, oup, 1, W]
 
         # -----------------------
-        # Final Fusion
+        # Final Fusion: 加性门控（2026-07-03 修复双 sigmoid 压制）
         # -----------------------
-        return self.identity(x) * weight_h * weight_w
+        # gate_h[H,1] + gate_w[1,W] 广播相加得到 [H,W] 门控信号（非相乘，不双重衰减）
+        # 单次 Sigmoid：信号保留率 ~50%（与标准 Coordinate Attention 一致）
+        gate = self.gate(gate_h + gate_w)  # [N, oup, H, W]
+        return self.identity(x) * gate

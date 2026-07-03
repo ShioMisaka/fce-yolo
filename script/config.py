@@ -119,11 +119,19 @@ class ModelConfig:
         Args:
             scale: 模型尺度
             stage: 阶段编号（1 或 2），None 表示最终结果（stage2 或单阶段）
+
+        与 trainer._train_two_stage / run_ablation._stage2_run_dir 对齐：
+        两阶段训练的 stage2 产物落在 <base>_stage2（如 baseline_yolo11m_stage2），
+        单阶段落在 <base>（如 baseline_yolo11m）。否则 compare.py 会找不到目录。
         """
-        pattern = self.result_pattern
+        pattern = self.result_pattern.format(scale=scale)
+        pattern = pattern.replace("_stage2", "")  # 归一，防 pattern 自带后缀
         if stage is not None:
-            pattern = pattern.replace("_stage2", f"_stage{stage}")
-        return pattern.format(scale=scale)
+            pattern = f"{pattern}_stage{stage}"
+        elif self.is_two_stage():
+            # 两阶段最终结果 = stage2 目录（与 trainer 实际产物命名一致）
+            pattern = f"{pattern}_stage2"
+        return pattern
 
 
 def get_model_config(model_type: str) -> ModelConfig:

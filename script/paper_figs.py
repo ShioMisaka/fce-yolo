@@ -44,7 +44,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import pandas as pd  # noqa: E402
 import yaml  # noqa: E402
 
-from script.analysis import load_results, extract_metrics  # noqa: E402
+from script.analysis import load_results  # noqa: E402
+# 注意：不要 import extract_metrics —— 它对 mAP50-95 与 mAP50 分别取各自的
+# idxmax（两条不同的 best 行），违反「best 行 P/R/mAP50/mAP50-95 同行」口径
+# （AGENTS.md §7/§8）。本脚本统一用 _best_metrics（同一行取值）。
 
 # 论文项目根（Visual Guidance Robotic Arm/，即 fce-yolo 的上一级）
 PAPER_ROOT = PROJECT_ROOT.parent
@@ -196,13 +199,13 @@ def _load_pil_font(size=28, bold=False):
     # Bold-biased file names first when bold=True; regular-biased first otherwise.
     win_bold = ["msyhbd.ttc", "segoeuib.ttf", "arialbd.ttf"]
     win_reg = ["msyh.ttc", "segoeui.ttf", "arial.ttf", "simhei.ttf"]
-    linux_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    linux_bold = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+    linux_reg = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/dejavu/DejaVuSans.ttf",
     ]
-    mac_paths = [
-        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    mac_bold = ["/System/Library/Fonts/Supplemental/Arial Bold.ttf"]
+    mac_reg = [
         "/System/Library/Fonts/Supplemental/Arial.ttf",
         "/Library/Fonts/Arial.ttf",
     ]
@@ -213,9 +216,9 @@ def _load_pil_font(size=28, bold=False):
                  (win_reg if bold else []) + (win_bold if not bold else [])
         candidates = [str(base / f) for f in prefer]
     elif sys.platform == "darwin":
-        candidates = mac_paths if not bold else mac_paths
+        candidates = (mac_bold + mac_reg) if bold else (mac_reg + mac_bold)
     else:
-        candidates = linux_paths
+        candidates = (linux_bold + linux_reg) if bold else (linux_reg + linux_bold)
 
     for fp in candidates:
         if Path(fp).exists():

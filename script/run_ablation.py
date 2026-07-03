@@ -248,16 +248,76 @@ def get_model_dir_name(model_key: str, scale: str) -> str:
     return mapping[model_key]
 
 
-def is_experiment_complete(scale: str, model_key: str, recipe: dict) -> bool:
+def _recipe_fingerprint(recipe: dict, model_key: str) -> str:
+    """计算本次训练的关键配置指纹（8 位 hash）。
+
+    覆盖所有影响训练结果的配置维度：阶段预算、freeze、lr、种子、增强、IoU 类型。
+    配方任一关键字段变化 → 指纹变化 → 断点续跑视为不匹配 → 强制重训。
+    这能根治"目录名相同但配方已改导致复用旧结果"的隐患（如 2026-07-03 的
+    fce_wiou 残留事件：旧 300ep 单阶段产物被当成新 250ep 两阶段复用）。
+    """
+    import hashlib, json
+    iou_override = recipe.get("iou_override", {}) or {}
+    key_fields = {
+        "stage1_epochs": recipe.get("stage1", {}).get("epochs", 0),
+        "stage1_lr0": recipe.get("stage1", {}).get("lr0"),
+        "stage2_epochs": recipe["stage2"]["epochs"],
+        "stage2_lr0": recipe["stage2"]["lr0"],
+        "freeze": recipe["freeze"],
+        "seed": recipe.get("shared", {}).get("seed"),
+        "deterministic": recipe.get("shared", {}).get("deterministic"),
+        "degrees": recipe.get("shared", {}).get("degrees"),
+        "imgsz": recipe.get("shared", {}).get("imgsz"),
+        "batch": recipe.get("shared", {}).get("batch"),
+        "iou_type": iou_override.get(model_key, "CIoU"),
+    }
+    # sort_keys 保证字段顺序变化不影响 hash
+    s = json.dumps(key_fields, sort_keys=True, default=str)
+    return hashlib.md5(s.encode("utf-8")).hexdigest()[:8]
+
+
+def write_recipe_fingerprint(stage2_dir: Path, recipe: dict, model_key: str) -> Path:
+    """训练成功后把配置指纹写入 stage2 目录。
+
+    后续断点续跑时由 verify_recipe_fingerprint 读取比对，确保目录内容
+    与当前配方一致，避免复用过时产物。
+    """
+    import json
+    fp_file = stage2_dir / "recipe_fingerprint.json"
+    payload = {
+        "fingerprint": _recipe_fingerprint(recipe, model_key),
+        "model_key": model_key,
+        "fields": {  # 便于人工核对，非校验用
+            "stage1_epochs": recipe.get("stage1", {}).get("epochs", 0),
+            "stage2_epochs": recipe["stage2"]["epochs"],
+            "freeze": recipe["freeze"],
+            "iou_type": (recipe.get("iou_override") or {}).get(model_key, "CIoU"),
+        },
+    }
+    with open(fp_file, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    return fp_file
+
+
+def is_experiment_complete(scale: str, model_key: str, recipe: dict,
+                           force: bool = False) -> bool:
     """判断某 (scale, model) 组合是否已完成（断点续跑判定）。
 
-    判据：stage2/best.pt 存在 且 results.csv 行数 >= stage2.epochs * 0.9（容忍早停）。
+    四重校验，任一不满足即视为未完成（重训）：
+      1. force=True 时直接返回 False（--force 强制重训）
+      2. stage2/best.pt + results.csv 存在
+      3. results.csv 行数 >= stage2.epochs * 0.9（容忍早停）
+      4. recipe_fingerprint.json 存在且指纹匹配（配方变 → 重训）
 
-    策略说明（review I1）：0.9 阈值同时覆盖"正常早停"和"stage2 训练到 90% 后被中断"两种
-    情形——后者按"接受现状、视作完成"处理。理由：best.pt 已在 best 轮保存，论文用 best
-    指标（非末轮），所以即便 stage2 末段缺失也不影响 best 指标采集；重训反而浪费数小时。
-    若需严格"必须训完 stage2.epochs 轮"，把 0.9 改为 1.0 即可（但早停触发时永远 < epochs）。
+    指纹校验（2026-07-03 新增）：根治旧残留污染。历史事件：旧版 300ep 单阶段
+    fce_wiou_m_stage2 残留，被新 250ep 两阶段配方误判为已完成（行数 300>=225 通过），
+    导致复制旧结果没重训。
+
+    Args:
+        force: --force 时为 True，强制返回 False
     """
+    if force:
+        return False
     s2_full = _stage2_run_dir(model_key, scale, recipe)
     best_pt = s2_full / "weights" / "best.pt"
     csv = s2_full / "results.csv"
@@ -269,16 +329,31 @@ def is_experiment_complete(scale: str, model_key: str, recipe: dict) -> bool:
     except Exception:
         return False
     min_rows = int(recipe["stage2"]["epochs"] * 0.9)
-    return len(df) >= min_rows
+    if len(df) < min_rows:
+        return False
+    # 指纹校验：无指纹文件（旧产物/手动训练）或指纹不匹配（配方已变）→ 视为未完成
+    fp_file = s2_full / "recipe_fingerprint.json"
+    expected_fp = _recipe_fingerprint(recipe, model_key)
+    if not fp_file.exists():
+        return False
+    import json
+    try:
+        with open(fp_file, encoding="utf-8") as f:
+            actual_fp = json.load(f).get("fingerprint")
+    except Exception:
+        return False
+    return actual_fp == expected_fp
 
 
-def run_one_experiment(model_key: str, scale: str, recipe: dict) -> dict:
+def run_one_experiment(model_key: str, scale: str, recipe: dict,
+                       force: bool = False) -> dict:
     """训练单组 (scale, model)，返回 {"stage1": Path, "stage2": Path}。
 
     断点续跑：若已完成则直接返回路径不重训。
+    force=True 时跳过断点续跑，强制重训（清理残留用）。
     """
     # 断点续跑
-    if is_experiment_complete(scale, model_key, recipe):
+    if is_experiment_complete(scale, model_key, recipe, force=force):
         final = _stage2_run_dir(model_key, scale, recipe)
         # 单阶段无 stage1，返回 None 占位以保持返回结构一致
         s1 = Path(str(final).replace("_stage2", "_stage1")) if "_stage2" in final.name else None
@@ -308,6 +383,11 @@ def run_one_experiment(model_key: str, scale: str, recipe: dict) -> dict:
                 f"{model_key} IoU verify failed: args.yaml not {expected_iou}, "
                 f"may degrade to CIoU, check recipe iou_override & build_train_config"
             )
+
+    # 写入配置指纹：供下次断点续跑的 is_experiment_complete 比对，
+    # 避免目录复用过时产物（详见 is_experiment_complete 注释）
+    s2_dir = result_dict["stage2"]
+    write_recipe_fingerprint(s2_dir, recipe, model_key)
 
     return result_dict
 
@@ -748,6 +828,8 @@ examples:
                              "(e.g. fair_20260702_153000); reads <run_dir>/<scale>/0X_*/stage2, "
                              "writes figures/README back to the same dir")
     parser.add_argument("--dry-run", action="store_true", help="print matrix only, no training")
+    parser.add_argument("--force", action="store_true",
+                        help="force retrain, ignore resume check (clean stale residue)")
 
     return parser.parse_args()
 
@@ -798,7 +880,7 @@ def main():
                 i += 1
                 print(f"\n[{i}/{total}] ===== {scale} / {model_key} =====")
                 try:
-                    run_one_experiment(model_key, scale, recipe)
+                    run_one_experiment(model_key, scale, recipe, force=args.force)
                 except Exception as e:
                     print(f"x {scale}/{model_key} failed: {e}")
                     failed_log = output_root / "failed.log"
