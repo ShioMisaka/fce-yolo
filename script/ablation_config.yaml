@@ -27,20 +27,29 @@ shared:
   degrees: 10.0         # 统一数据增强（修复旧版 ④ 关掉 degrees 的不一致）
   # 其余增强用 ultralytics 默认（hsv/flip/mosaic 等）
 
-# ===== 单阶段训练预算（2026-07-02 修订，原两阶段取消）=====
-# 理由：fair 实验发现 freeze=10 压制了 FCE 新增的注意力模块。
-#       全部 4 组改单阶段 300ep，排除 freeze 干扰，对齐旧版 main_ablation_m 的训练方式。
-# config.py 里 4 个 ModelConfig 也已改为 stage1=None（单阶段），这里 stage1 段仅保留文档用途
-# （build_model_cfg_with_fairness 会注入，但因 stage1=None，trainer 走单阶段分支不使用 stage1）。
+# ===== 两阶段训练预算（2026-07-03 修订，恢复两阶段）=====
+# 理由（详见 2026-07-03 根因分析）：
+#   2026-07-02 把 stage1 取消改单阶段后，fair 实验全面倒挂（①→④ 不再递增）。
+#   根因：BiFPN_Concat / BiCoordCrossAtt 是新增模块，从 yolo11m.pt 按层名匹配
+#   迁移不到任何权重（intersect_dicts 丢弃），单阶段 300ep 学不充分；旧版递增
+#   靠的是 stage1 给新增模块预热。取消 stage1 等于丢掉这个起跑优势。
+# 本次修订：恢复两阶段，但 freeze=0（不冻结 backbone，避免旧版 freeze=10 冻住
+#   注意力层5/8 的问题），让新增模块与 backbone 一起预热；lr0 同 stage2（0.001，
+#   freeze=0 时保护预训练权重不被大 lr 破坏）。4 组全部两阶段（含 baseline），
+#   变量完全统一，是真·公平对比。
 stage1:
-  epochs: 0
-stage2:                 # 单阶段实际使用的配置
-  epochs: 300           # 单阶段总预算
+  epochs: 50            # 新增模块预热（与旧版 stage1 预算一致）
+  lr0: 0.001            # freeze=0 时保守学习率，保护 yolo11m.pt 预训练权重
+  cos_lr: true
+  patience: 50
+  close_mosaic: 0       # 预热期保持 mosaic 增强，让新增模块见多样样本
+stage2:                 # 端到端微调
+  epochs: 250           # 250 + 50 = 300 总预算（对齐旧版/单阶段总轮数）
   lr0: 0.001
   cos_lr: true
   patience: 50
   close_mosaic: 20
-freeze: 0               # 不冻结（单阶段）
+freeze: 0               # 不冻结（全解冻，避免冻住层5/8注意力模块）
 
 # ===== 实验矩阵 =====
 # 注意：n 尺度 FCE 是负增益（容量不足，注意力模块过参数化），历史数据
@@ -56,4 +65,4 @@ iou_override:
 # ===== 输出 =====
 # run_ablation.py 自动创建 runs/outputs/fair_<ts>/，无需配置 output_root。
 copy_stage1: false      # 默认只复制 stage2（节磁盘）；stage1 留 runs/detect/
-total_epochs: 300       # 文档用途 = stage2.epochs（单阶段）
+total_epochs: 300       # 文档用途 = stage1.epochs + stage2.epochs（两阶段）

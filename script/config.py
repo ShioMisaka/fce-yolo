@@ -147,11 +147,15 @@ def get_model_config(model_type: str) -> ModelConfig:
 # ==================== 模型配置表 ====================
 #
 # 训练策略（2026-07-02 修订）：
-# 全部 4 组改为【单阶段训练】，不再 freeze backbone。
-# 理由：fair 实验发现 freeze=10 压制了 FCE 新增的注意力模块（baseline +3.5 但 FCE -2.3）。
-#       freeze 阶段冻结 backbone 前 10 层时，注意力模块（层5/8）被冻结无法训练，
-#       stage2 解冻后又因 lr 过小训不动新初始化的注意力。单阶段排除该干扰。
-# 旧版 main_ablation_m 的 ①②③ 就是接近单阶段跑出递增（+7.45 mAP50-95）。
+# 全部 4 组改为【两阶段训练】，但 freeze=0（不冻结 backbone）。
+# 理由（详见 2026-07-03 根因分析）：
+#   2026-07-02 把 stage1 取消改单阶段后，fair 实验全面倒挂（①→④ 不再递增）。
+#   根因：BiFPN_Concat / BiCoordCrossAtt 是新增模块，从 yolo11m.pt 按层名匹配
+#   迁移不到任何权重，单阶段 300ep 学不充分；旧版递增靠 stage1 给新增模块预热。
+#   本次恢复两阶段，但 freeze=0（不冻 backbone，避免冻住注意力层5/8），
+#   stage1 lr0=0.001（freeze=0 时保守 lr，保护预训练权重）。4 组全部两阶段（含
+#   baseline），变量完全统一，是真·公平对比。run_ablation.py 用 replace 覆盖
+#   stage1/stage2/freeze，但这里保持一致以防 train.py 直接调用时行为分裂。
 
 MODEL_CONFIGS: Dict[str, ModelConfig] = {
     "baseline": ModelConfig(
@@ -159,8 +163,9 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         yaml_path="ultralytics/cfg/models/11/yolo11.yaml",
         color="#0BDBEB",
         display_name=lambda s: f"YOLOv11{s.upper()} Baseline",
-        stage1=None,
-        stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
+        stage1=StageConfig(epochs=50, patience=50, lr0=0.001,
+                           cos_lr=True, close_mosaic=0),
+        stage2=StageConfig(epochs=250, patience=50, lr0=0.001,
                            cos_lr=True, close_mosaic=20),
         result_pattern="baseline_yolo11{scale}",
     ),
@@ -169,8 +174,9 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         yaml_path="ultralytics/cfg/models/11/yolo11-bifpn.yaml",
         color="#042AFF",
         display_name=lambda s: f"YOLOv11{s.upper()}-BiFPN",
-        stage1=None,
-        stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
+        stage1=StageConfig(epochs=50, patience=50, lr0=0.001,
+                           cos_lr=True, close_mosaic=0),
+        stage2=StageConfig(epochs=250, patience=50, lr0=0.001,
                            cos_lr=True, close_mosaic=20),
         result_pattern="bifpn_{scale}",
     ),
@@ -179,8 +185,9 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         yaml_path="ultralytics/cfg/models/11/yolo11-fce.yaml",
         color="#FF6B00",
         display_name=lambda s: f"YOLOv11{s.upper()}-FCE",
-        stage1=None,
-        stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
+        stage1=StageConfig(epochs=50, patience=50, lr0=0.001,
+                           cos_lr=True, close_mosaic=0),
+        stage2=StageConfig(epochs=250, patience=50, lr0=0.001,
                            cos_lr=True, close_mosaic=20),
         result_pattern="fce_{scale}",
     ),
@@ -192,8 +199,9 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         yaml_path="ultralytics/cfg/models/11/yolo11-fce.yaml",
         color="#E91E63",
         display_name=lambda s: f"YOLOv11{s.upper()}-FCE(WIoU)",
-        stage1=None,
-        stage2=StageConfig(epochs=300, patience=50, lr0=0.001,
+        stage1=StageConfig(epochs=50, patience=50, lr0=0.001,
+                           cos_lr=True, close_mosaic=0),
+        stage2=StageConfig(epochs=250, patience=50, lr0=0.001,
                            cos_lr=True, close_mosaic=20),
         result_pattern="fce_wiou_{scale}",
     ),

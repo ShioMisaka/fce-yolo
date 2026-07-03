@@ -122,15 +122,18 @@ def load_recipe(yaml_path: Path) -> dict:
 def build_model_cfg_with_fairness(model_key: str, recipe: dict) -> ModelConfig:
     """给任意 model 注入统一的训练配置（单阶段或两阶段，由配方决定）。
 
-    - recipe.freeze == 0 或 recipe.stage1.epochs == 0 时：单阶段（stage1=None），
-      所有模型走 config.py 的单阶段分支，排除 freeze 对新增模块的干扰。
-    - 否则：两阶段，统一 stage1 + stage2 + freeze。
-    - 不改 config.py 全局 MODEL_CONFIGS，返回新对象。
+    单阶段 vs 两阶段判定：只看 stage1.epochs 是否为 0（与 freeze 解耦）。
+      - stage1.epochs == 0：单阶段（stage1=None），所有模型走单阶段分支。
+      - stage1.epochs > 0：两阶段，统一 stage1 + stage2 + freeze。
+    freeze 独立配置：freeze=0 表示两阶段 stage1 也不冻结（让新增模块与 backbone
+      一起预热，避免旧版 freeze=10 冻住注意力层5/8 的问题）。freeze 不再决定阶段数。
+
+    不改 config.py 全局 MODEL_CONFIGS，返回新对象。
     """
     base_cfg = get_model_config(model_key)
     freeze = recipe["freeze"]
     stage1_cfg = recipe.get("stage1", {})
-    is_single_stage = (freeze == 0 or stage1_cfg.get("epochs", 50) == 0)
+    is_single_stage = stage1_cfg.get("epochs", 0) == 0
     return replace(
         base_cfg,
         stage1=None if is_single_stage else StageConfig(**stage1_cfg),
@@ -189,13 +192,13 @@ def print_matrix_preview(recipe: dict, scales: list, models: list, output_root: 
     print(f"\nunified variables:")
     print(f"  imgsz={sh.get('imgsz')}, batch={sh.get('batch')}, optimizer={sh.get('optimizer')}, lr0={recipe['stage2']['lr0']}")
     print(f"  seed={sh.get('seed')}, deterministic={sh.get('deterministic')}, degrees={sh.get('degrees')}, cache={sh.get('cache')}")
-    # 训练策略描述：单阶段（freeze=0 或 stage1.epochs=0）vs 两阶段
-    freeze = recipe["freeze"]
+    # 训练策略描述：单阶段（stage1.epochs==0）vs 两阶段（与 freeze 解耦）
     s1_ep = recipe["stage1"]["epochs"]
-    if freeze == 0 or s1_ep == 0:
+    freeze = recipe["freeze"]
+    if s1_ep == 0:
         print(f"  training: single-stage ({recipe['stage2']['epochs']}ep, lr0={recipe['stage2']['lr0']}, cos_lr={recipe['stage2']['cos_lr']}, close_mosaic={recipe['stage2']['close_mosaic']}, no freeze)")
     else:
-        print(f"  training: two-stage stage1({s1_ep}ep, freeze={freeze}) + stage2({recipe['stage2']['epochs']}ep) = {recipe.get('total_epochs', s1_ep+recipe['stage2']['epochs'])}ep")
+        print(f"  training: two-stage stage1({s1_ep}ep, freeze={freeze}, lr0={recipe['stage1'].get('lr0','?')}) + stage2({recipe['stage2']['epochs']}ep, lr0={recipe['stage2']['lr0']}) = {recipe.get('total_epochs', s1_ep+recipe['stage2']['epochs'])}ep")
     print(f"  IoU mapping: {recipe.get('iou_override', {})}")
     print(f"  output_root: {output_root}")
     print("\n(--dry-run previews only; drop it to start training)")
@@ -255,7 +258,7 @@ def is_experiment_complete(scale: str, model_key: str, recipe: dict) -> bool:
     指标（非末轮），所以即便 stage2 末段缺失也不影响 best 指标采集；重训反而浪费数小时。
     若需严格"必须训完 stage2.epochs 轮"，把 0.9 改为 1.0 即可（但早停触发时永远 < epochs）。
     """
-    s2_full = _stage2_run_dir(model_key, scale)
+    s2_full = _stage2_run_dir(model_key, scale, recipe)
     best_pt = s2_full / "weights" / "best.pt"
     csv = s2_full / "results.csv"
     if not (best_pt.exists() and csv.exists()):
@@ -276,7 +279,7 @@ def run_one_experiment(model_key: str, scale: str, recipe: dict) -> dict:
     """
     # 断点续跑
     if is_experiment_complete(scale, model_key, recipe):
-        final = _stage2_run_dir(model_key, scale)
+        final = _stage2_run_dir(model_key, scale, recipe)
         # 单阶段无 stage1，返回 None 占位以保持返回结构一致
         s1 = Path(str(final).replace("_stage2", "_stage1")) if "_stage2" in final.name else None
         print(f"✓ done, skip {scale}/{model_key}")
@@ -313,15 +316,24 @@ def run_one_experiment(model_key: str, scale: str, recipe: dict) -> dict:
 # 结果收集与归档
 # ============================================================
 
-def _stage2_run_dir(model_key: str, scale: str) -> Path:
+def _stage2_run_dir(model_key: str, scale: str, recipe: dict = None) -> Path:
     """返回 runs/detect 下某 (scale, model) 的最终结果目录路径。
 
-    单阶段（stage1=None）：目录名即 result_pattern（如 baseline_yolo11m、bifpn_m）。
-    两阶段：result_pattern 含 _stage2 后缀（如 bifpn_m_stage2）。
-    统一从 config.py 的 result_pattern 推导，无需 baseline 特例。
+    单阶段（stage1.epochs==0）：目录名即 result_pattern（如 baseline_yolo11m、bifpn_m）。
+    两阶段：trainer 把 result_pattern 的 _stage2 后缀剥离后再加回，stage2 实际目录名
+      为 <base>_stage2（如 bifpn_m_stage2）。详见 trainer._train_two_stage。
+    需要传入 recipe 判定阶段；未传时按 config.py 的 stage1 是否为 None 判定（兼容旧调用）。
     """
     base_cfg = get_model_config(model_key)
-    return Path("runs/detect") / base_cfg.result_pattern.format(scale=scale)
+    base = base_cfg.result_pattern.format(scale=scale)
+    # 判定是否两阶段：优先用 recipe，否则 fallback 到 model_cfg 自身配置
+    if recipe is not None:
+        is_two_stage = recipe.get("stage1", {}).get("epochs", 0) > 0
+    else:
+        is_two_stage = base_cfg.is_two_stage()
+    if is_two_stage:
+        base = base.replace("_stage2", "") + "_stage2"
+    return Path("runs/detect") / base
 
 
 def archive_one(scale: str, model_key: str, recipe: dict, output_root: Path = None):
@@ -339,7 +351,7 @@ def archive_one(scale: str, model_key: str, recipe: dict, output_root: Path = No
     dst_model_dir = scale_dir / model_dir_name
     scale_dir.mkdir(parents=True, exist_ok=True)
 
-    s2_src = _stage2_run_dir(model_key, scale)
+    s2_src = _stage2_run_dir(model_key, scale, recipe)
     if not s2_src.is_absolute():
         s2_src = PROJECT_ROOT / s2_src
 
@@ -652,11 +664,11 @@ def generate_readme(recipe: dict, all_results: dict, output_root: Path = None):
     lines.append("## Recipe\n")
     lines.append(f"- scales: {', '.join(recipe['scales'])}")
     lines.append(f"- models: {' / '.join(MODEL_DISPLAY[m][1] for m in recipe['models'])}")
-    # 训练策略描述：单阶段 vs 两阶段
-    freeze = recipe["freeze"]
+    # 训练策略描述：单阶段（stage1.epochs==0）vs 两阶段（与 freeze 解耦）
     s1 = recipe.get("stage1", {})
     s2 = recipe["stage2"]
-    if freeze == 0 or s1.get("epochs", 0) == 0:
+    freeze = recipe["freeze"]
+    if s1.get("epochs", 0) == 0:
         lines.append(f"- **single-stage**: {s2['epochs']}ep, lr0={s2['lr0']}, cos_lr={s2['cos_lr']}, close_mosaic={s2['close_mosaic']}, no freeze (excludes freeze interference on the new attention module)")
     else:
         lines.append(f"- **all two-stage**: stage1({s1['epochs']}ep, freeze={freeze}, lr0={s1.get('lr0','?')}) + stage2({s2['epochs']}ep, lr0={s2['lr0']}, cos_lr={s2['cos_lr']}) = {recipe.get('total_epochs','?')}ep")
