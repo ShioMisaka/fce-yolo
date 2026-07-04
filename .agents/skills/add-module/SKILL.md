@@ -72,7 +72,7 @@ from ultralytics.nn.modules import (
 
 更新以下位置（保持格式一致）：
 - `README.md` 的模块表格
-- `CLAUDE.md` 的模块说明
+- `AGENTS.md` 的模块说明
 
 ## 参考资源
 
