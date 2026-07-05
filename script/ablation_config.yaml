@@ -20,36 +20,44 @@ shared:
   optimizer: AdamW
   lrf: 0.01
   momentum: 0.937
-  weight_decay: 0.0005
+  weight_decay: 0.001   # 2026-07-05: 0.0005→0.001（翻倍）缓解过拟合（DIM 数据集小）
   cache: ram
   seed: 42              # 固定种子，保证 4 组可复现、无运气差异
   deterministic: true   # 固定随机行为
   degrees: 10.0         # 统一数据增强（修复旧版 ④ 关掉 degrees 的不一致）
+  # ---- 2026-07-05 新增正则化（针对过拟合，详见 loss 诊断）----
+  # 诊断证据：fair_20260704 train/val box_loss gap 53%~115%，patience 早停触发，
+  #           best_epoch 集中在中后期，是教科书级过拟合。原配置 mixup/dropout 全 0、
+  #           weight_decay=0.0005 是 YOLO 为 COCO 调的默认，对 DIM 小数据集严重不足。
+  mixup: 0.15           # 样本线性混合，破坏死记硬背（YOLO 推荐值）
+  copy_paste: 0.1       # 复制粘贴增强，小数据集增加样本多样性
+  dropout: 0.1          # DropPath 正则，防止单一路径过强
+  warmup_epochs: 0.5    # 缩短 stage2 warmup，避免重热启动扰动 stage1 权重
+                        # （诊断：baseline ep10 mAP 暴跌 0.54→0.38 是 warmup 扰动症状）
   # 其余增强用 ultralytics 默认（hsv/flip/mosaic 等）
 
-# ===== 两阶段训练预算（2026-07-03 修订，恢复两阶段）=====
-# 理由（详见 2026-07-03 根因分析）：
-#   2026-07-02 把 stage1 取消改单阶段后，fair 实验全面倒挂（①→④ 不再递增）。
-#   根因：BiFPN_Concat / BiCoordCrossAtt 是新增模块，从 yolo11m.pt 按层名匹配
-#   迁移不到任何权重（intersect_dicts 丢弃），单阶段 300ep 学不充分；旧版递增
-#   靠的是 stage1 给新增模块预热。取消 stage1 等于丢掉这个起跑优势。
-# 本次修订：恢复两阶段，但 freeze=0（不冻结 backbone，避免旧版 freeze=10 冻住
-#   注意力层5/8 的问题），让新增模块与 backbone 一起预热；lr0 同 stage2（0.001，
-#   freeze=0 时保护预训练权重不被大 lr 破坏）。4 组全部两阶段（含 baseline），
-#   变量完全统一，是真·公平对比。
+# ===== 两阶段训练预算（2026-07-05 修订，中度正则化）=====
+# 历次修订脉络：
+#   2026-07-03: 恢复两阶段（stage1 预热新增模块），freeze=0（怕冻住注意力层5/8）
+#   2026-07-05: 诊断为过拟合主导（gap 53%~115%），引入 freeze=4 + 数据增强强化
+# freeze=4 的边界（关键）：
+#   yaml 层序：0-3 是 P1-P3 浅层（Conv+C3k2），层 5/8 是 BiCoordCrossAtt 注意力
+#   freeze=4 冻结节层 0-3，注意力层 5/8 不在冻结范围 → 不影响注意力模块训练
+#   这同时解决：(a) backbone 浅层不被小数据集带偏（缓解过拟合）；
+#               (b) stage2 解冻时 backbone 处稳定预训练态（缓解重热启动扰动）。
 stage1:
   epochs: 50            # 新增模块预热（与旧版 stage1 预算一致）
-  lr0: 0.001            # freeze=0 时保守学习率，保护 yolo11m.pt 预训练权重
+  lr0: 0.001            # 保守学习率，保护 yolo11m.pt 预训练权重
   cos_lr: true
   patience: 50
   close_mosaic: 0       # 预热期保持 mosaic 增强，让新增模块见多样样本
 stage2:                 # 端到端微调
-  epochs: 250           # 250 + 50 = 300 总预算（对齐旧版/单阶段总轮数）
+  epochs: 250           # 250 + 50 = 300 总预算（对齐旧版总轮数）
   lr0: 0.001
   cos_lr: true
   patience: 50
   close_mosaic: 20
-freeze: 0               # 不冻结（全解冻，避免冻住层5/8注意力模块）
+freeze: 4               # 2026-07-05: 0→4，冻结 P1-P3 浅层（注意力层5/8不冻）
 
 # ===== 实验矩阵 =====
 # 注意：n 尺度 FCE 是负增益（容量不足，注意力模块过参数化），历史数据
