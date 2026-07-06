@@ -20,20 +20,21 @@ shared:
   optimizer: AdamW
   lrf: 0.01
   momentum: 0.937
-  weight_decay: 0.001   # 2026-07-05: 0.0005→0.001（翻倍）缓解过拟合（DIM 数据集小）
+  weight_decay: 0.001 # 2026-07-05: 0.0005→0.001（翻倍）缓解过拟合（DIM 数据集小）
   cache: ram
-  seed: 42              # 固定种子，保证 4 组可复现、无运气差异
-  deterministic: true   # 固定随机行为
-  degrees: 10.0         # 统一数据增强（修复旧版 ④ 关掉 degrees 的不一致）
+  seed: 42 # 固定种子，保证 4 组可复现、无运气差异
+  deterministic: true # 固定随机行为
+  degrees: 10.0 # 统一数据增强（修复旧版 ④ 关掉 degrees 的不一致）
   # ---- 2026-07-05 新增正则化（针对过拟合，详见 loss 诊断）----
   # 诊断证据：fair_20260704 train/val box_loss gap 53%~115%，patience 早停触发，
   #           best_epoch 集中在中后期，是教科书级过拟合。原配置 mixup/dropout 全 0、
   #           weight_decay=0.0005 是 YOLO 为 COCO 调的默认，对 DIM 小数据集严重不足。
-  mixup: 0.15           # 样本线性混合，破坏死记硬背（YOLO 推荐值）
-  copy_paste: 0.1       # 复制粘贴增强，小数据集增加样本多样性
-  dropout: 0.1          # DropPath 正则，防止单一路径过强
-  warmup_epochs: 0.5    # 缩短 stage2 warmup，避免重热启动扰动 stage1 权重
-                        # （诊断：baseline ep10 mAP 暴跌 0.54→0.38 是 warmup 扰动症状）
+  mixup: 0.15 # 样本线性混合，破坏死记硬背（YOLO 推荐值）
+  copy_paste: 0.1 # 复制粘贴增强，小数据集增加样本多样性
+  dropout: 0.1 # DropPath 正则，防止单一路径过强
+  warmup_epochs:
+    0.5 # 缩短 stage2 warmup，避免重热启动扰动 stage1 权重
+    # （诊断：baseline ep10 mAP 暴跌 0.54→0.38 是 warmup 扰动症状）
   # 其余增强用 ultralytics 默认（hsv/flip/mosaic 等）
 
 # ===== 两阶段训练预算（2026-07-05 修订，中度正则化）=====
@@ -46,25 +47,25 @@ shared:
 #   这同时解决：(a) backbone 浅层不被小数据集带偏（缓解过拟合）；
 #               (b) stage2 解冻时 backbone 处稳定预训练态（缓解重热启动扰动）。
 stage1:
-  epochs: 50            # 新增模块预热（与旧版 stage1 预算一致）
-  lr0: 0.001            # 保守学习率，保护 yolo11m.pt 预训练权重
+  epochs: 50 # 新增模块预热（与旧版 stage1 预算一致）
+  lr0: 0.001 # 保守学习率，保护 yolo11m.pt 预训练权重
   cos_lr: true
   patience: 50
-  close_mosaic: 0       # 预热期保持 mosaic 增强，让新增模块见多样样本
-stage2:                 # 端到端微调
-  epochs: 250           # 250 + 50 = 300 总预算（对齐旧版总轮数）
+  close_mosaic: 0 # 预热期保持 mosaic 增强，让新增模块见多样样本
+stage2: # 端到端微调
+  epochs: 250 # 250 + 50 = 300 总预算（对齐旧版总轮数）
   lr0: 0.001
   cos_lr: true
   patience: 50
   close_mosaic: 20
-freeze: 4               # 2026-07-05: 0→4，冻结 P1-P3 浅层（注意力层5/8不冻）
+freeze: 4 # 2026-07-05: 0→4，冻结 P1-P3 浅层（注意力层5/8不冻）
 
 # ===== 实验矩阵 =====
 # 注意：n 尺度 FCE 是负增益（容量不足，注意力模块过参数化），历史数据
 # n: FCE-baseline=-0.064；s/m/l/x 均为正。论文主推 m 尺度，本配方默认只跑 m。
 # 如需跨尺度论证，改为 [m, s] 或 [m, s, l]。
 scales: [m]
-models: [baseline, bifpn, fce, fce_wiou]   # ①②③④ 消融阶梯
+models: [baseline, bifpn, fce, fce_wiou] # ①②③④ 消融阶梯
 
 # IoU 损失显式映射（fce_wiou 走 WIoU，未列出的默认 CIoU）
 iou_override:
@@ -72,5 +73,5 @@ iou_override:
 
 # ===== 输出 =====
 # run_ablation.py 自动创建 runs/outputs/fair_<ts>/，无需配置 output_root。
-copy_stage1: false      # 默认只复制 stage2（节磁盘）；stage1 留 runs/detect/
-total_epochs: 300       # 文档用途 = stage1.epochs + stage2.epochs（两阶段）
+copy_stage1: false # 默认只复制 stage2（节磁盘）；stage1 留 runs/detect/
+total_epochs: 300 # 文档用途 = stage1.epochs + stage2.epochs（两阶段）

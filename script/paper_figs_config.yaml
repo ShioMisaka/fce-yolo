@@ -18,16 +18,16 @@ experiments:
   baseline:
     dir: 实验/论文正式实验/main_ablation_m/01_baseline_yolo11m
     display: "YOLOv11 (baseline)"
-    color: "#0BDBEB"        # cyan
+    color: "#0BDBEB" # cyan
     linestyle: "--"
     order: 1
-    fce_module: "-"         # 消融表用：对应 FCE 哪个模块
+    fce_module: "-" # 消融表用：对应 FCE 哪个模块
     loss: "CIoU"
 
   bifpn:
     dir: 实验/论文正式实验/main_ablation_m/02_bifpn_m
     display: "+BiFPN"
-    color: "#042AFF"        # blue
+    color: "#042AFF" # blue
     linestyle: "-."
     order: 2
     fce_module: "F"
@@ -36,7 +36,7 @@ experiments:
   fce:
     dir: 实验/论文正式实验/main_ablation_m/03_fce_m_ciou
     display: "+BiFPN+Attn"
-    color: "#FF6B00"        # orange
+    color: "#FF6B00" # orange
     linestyle: ":"
     order: 3
     fce_module: "F+C"
@@ -45,7 +45,7 @@ experiments:
   fce_wiou:
     dir: 实验/论文正式实验/main_ablation_m/04_fce_m_wiou
     display: "FCE (+WIoU)"
-    color: "#E91E63"        # magenta (WIoU highlighted)
+    color: "#E91E63" # magenta (WIoU highlighted)
     linestyle: "-"
     order: 4
     fce_module: "F+C+E"

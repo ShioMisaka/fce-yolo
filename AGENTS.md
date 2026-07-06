@@ -10,12 +10,12 @@
 
 实现于 `ultralytics/nn/modules/fce_block.py`，是本项目的核心创新点：
 
-| 模块 | 作用 | 典型 YAML 参数 |
-|------|------|----------------|
-| **BiFPN_Concat** | 可学习加权多尺度特征融合 | `[-1, 6], 1, BiFPN_Concat, []` |
-| **CoordAtt** | 坐标注意力（H/W 方向空间依赖） | `[-1, 1, CoordAtt, [256, 16]]`（oup, reduction） |
-| **CoordCrossAtt** | 坐标交叉注意力（跨方向交互） | `[..., CoordCrossAtt, [256, 16, 2]]`（+num_heads） |
-| **BiCoordCrossAtt** | 双向坐标交叉注意力（对称 H↔W） | `[..., BiCoordCrossAtt, [512, 16, 8]]` |
+| 模块                | 作用                            | 典型 YAML 参数                                     |
+| ------------------- | ------------------------------- | -------------------------------------------------- |
+| **BiFPN_Concat**    | 可学习加权多尺度特征融合        | `[-1, 6], 1, BiFPN_Concat, []`                     |
+| **CoordAtt**        | 坐标注意力（H/W 方向空间依赖）  | `[-1, 1, CoordAtt, [256, 16]]`（oup, reduction）   |
+| **CoordCrossAtt**   | 坐标交叉注意力（跨方向交互）    | `[..., CoordCrossAtt, [256, 16, 2]]`（+num_heads） |
+| **BiCoordCrossAtt** | 双向坐标交叉注意力（对称 H↔W） | `[..., BiCoordCrossAtt, [512, 16, 8]]`             |
 
 消融阶梯（`ablation_config.yaml` 的 models 顺序）：`baseline` ① → `+BiFPN` ② → `+BiFPN+Attn` ③ → `FCE (+WIoU)` ④。
 
@@ -25,19 +25,19 @@
 
 模块化训练架构，支持单模型训练、多模型对比、配方驱动消融、论文图表生成。详细 CLI 文档见 `script/README.md`。
 
-| 文件 | 角色 |
-|------|------|
-| `config.py` | 配置系统：`StageConfig`/`TrainConfig`/`ModelConfig` dataclass，`MODEL_CONFIGS`（baseline/bifpn/fce/fce_wiou），`DATASET_PRESETS`（default/coco/coco_hq） |
-| `trainer.py` | `YOLOv11Trainer`：按 `ModelConfig.is_two_stage()` 自动跑单阶段或两阶段（stage1 预热 + stage2 微调） |
-| `train.py` | 单模型训练 CLI：`python script/train.py <MODEL> --scale <n/s/m/l/x> [opts]` |
-| `compare.py` | 多模型对比 CLI：`--models baseline fce --scale s` |
-| `run_ablation.py` | **公平消融编排器**：读 `ablation_config.yaml` 配方，一键训练 + 整理 + 出图，产物落入 `runs/outputs/fair_<timestamp>/` |
-| `ablation_config.yaml` | 消融配方（shared 统一变量 / stage1/stage2 / scales / models / iou_override）。**重做实验只改 YAML，不改代码** |
-| `paper_figs.py` + `paper_figs_config.yaml` | 论文图表生成（A 收敛曲线 / B 消融柱状 / C 检测样例 / D PR+混淆矩阵） |
-| `paper_plots.py` | 底层绘图函数（被 paper_figs 调用） |
-| `analysis.py` | 无状态纯函数：`load_results`/`extract_metrics`/`plot_comparison_curves`，可独立 import |
-| `pack_results.py` | 实验结果打包（跨机器回传） |
-| `test.py` | 配置自检：`python script/test.py` → `✓ 所有测试通过!` |
+| 文件                                       | 角色                                                                                                                                                     |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config.py`                                | 配置系统：`StageConfig`/`TrainConfig`/`ModelConfig` dataclass，`MODEL_CONFIGS`（baseline/bifpn/fce/fce_wiou），`DATASET_PRESETS`（default/coco/coco_hq） |
+| `trainer.py`                               | `YOLOv11Trainer`：按 `ModelConfig.is_two_stage()` 自动跑单阶段或两阶段（stage1 预热 + stage2 微调）                                                      |
+| `train.py`                                 | 单模型训练 CLI：`python script/train.py <MODEL> --scale <n/s/m/l/x> [opts]`                                                                              |
+| `compare.py`                               | 多模型对比 CLI：`--models baseline fce --scale s`                                                                                                        |
+| `run_ablation.py`                          | **公平消融编排器**：读 `ablation_config.yaml` 配方，一键训练 + 整理 + 出图，产物落入 `runs/outputs/fair_<timestamp>/`                                    |
+| `ablation_config.yaml`                     | 消融配方（shared 统一变量 / stage1/stage2 / scales / models / iou_override）。**重做实验只改 YAML，不改代码**                                            |
+| `paper_figs.py` + `paper_figs_config.yaml` | 论文图表生成（A 收敛曲线 / B 消融柱状 / C 检测样例 / D PR+混淆矩阵）                                                                                     |
+| `paper_plots.py`                           | 底层绘图函数（被 paper_figs 调用）                                                                                                                       |
+| `analysis.py`                              | 无状态纯函数：`load_results`/`extract_metrics`/`plot_comparison_curves`，可独立 import                                                                   |
+| `pack_results.py`                          | 实验结果打包（跨机器回传）                                                                                                                               |
+| `test.py`                                  | 配置自检：`python script/test.py` → `✓ 所有测试通过!`                                                                                                    |
 
 ### 两阶段训练约定（重要）
 

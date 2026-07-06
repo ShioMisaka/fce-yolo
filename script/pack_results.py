@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-训练结果打包器（通用）
+训练结果打包器（通用）.
 
 把 runs/detect/<name>/ 整个复制并压缩成 runs/<name>.zip，
 方便通过 scp / 网盘一次性下载到本机分析。
@@ -20,7 +19,6 @@
 
 import argparse
 import datetime
-import shutil
 import subprocess
 import sys
 import zipfile
@@ -35,11 +33,14 @@ EXCLUDE_EXTS = {".pyc", ".pyo"}
 
 
 def get_git_commit() -> str:
-    """获取当前 git commit hash（失败返回 unknown）。"""
+    """获取当前 git commit hash（失败返回 unknown）。."""
     try:
         r = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if r.returncode == 0:
             return r.stdout.strip()
@@ -49,9 +50,10 @@ def get_git_commit() -> str:
 
 
 def extract_best_metrics(csv_path: Path) -> dict:
-    """从 results.csv 提取 best 指标（按 mAP50-95 最高轮）。失败返回空 dict。"""
+    """从 results.csv 提取 best 指标（按 mAP50-95 最高轮）。失败返回空 dict。."""
     try:
         import pandas as pd
+
         df = pd.read_csv(csv_path)
         df.columns = [c.strip() for c in df.columns]
         col = "metrics/mAP50-95(B)"
@@ -72,7 +74,7 @@ def extract_best_metrics(csv_path: Path) -> dict:
 
 
 def build_manifest(src_dir: Path, name: str, metrics: dict) -> str:
-    """生成 manifest 文本。"""
+    """生成 manifest 文本。."""
     lines = []
     lines.append("=" * 60)
     lines.append(f"训练结果打包清单：{name}")
@@ -122,7 +124,7 @@ def build_manifest(src_dir: Path, name: str, metrics: dict) -> str:
 
 
 def pack(name: str, runs_dir: Path) -> Path:
-    """打包 runs_dir/<name> 为 runs_dir/../<name>.zip。返回 zip 路径。"""
+    """打包 runs_dir/<name> 为 runs_dir/../<name>.zip。返回 zip 路径。."""
     src = runs_dir / name
     if not src.exists():
         print(f"✗ 实验目录不存在: {src}")
@@ -164,10 +166,10 @@ def pack(name: str, runs_dir: Path) -> Path:
 
 def main():
     parser = argparse.ArgumentParser(description="训练结果打包器")
-    parser.add_argument("name", nargs="?", default="fce_wiou_m_stage2",
-                        help="实验目录名（runs/detect/<name>），默认 fce_wiou_m_stage2")
-    parser.add_argument("--runs-dir", default="runs/detect",
-                        help="runs 目录路径，默认 runs/detect")
+    parser.add_argument(
+        "name", nargs="?", default="fce_wiou_m_stage2", help="实验目录名（runs/detect/<name>），默认 fce_wiou_m_stage2"
+    )
+    parser.add_argument("--runs-dir", default="runs/detect", help="runs 目录路径，默认 runs/detect")
     args = parser.parse_args()
 
     runs_dir = (PROJECT_ROOT / args.runs_dir).resolve()
