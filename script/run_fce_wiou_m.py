@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-第④组实验（完整 FCE + WIoU）一键训练脚本
+第④组实验（完整 FCE + WIoU）一键训练脚本.
 
 在工作站上通过 ssh 执行，完成：训练前自检 → 调用 train.py 两阶段训练 →
 训练后校验（防漏传 --iou-type 退化成 CIoU）→ 自动打包结果。
@@ -38,8 +37,9 @@ MIN_EPOCHS = 250  # 正常应跑满 300 或 patience 早停，过少视为异常
 
 # ==================== 训练前自检 ====================
 
+
 def pre_check() -> bool:
-    """训练前自检：确认关键文件存在、配置已注册、数据集可访问。"""
+    """训练前自检：确认关键文件存在、配置已注册、数据集可访问。."""
     print("\n" + "=" * 60)
     print("【训练前自检】")
     print("=" * 60)
@@ -57,9 +57,10 @@ def pre_check() -> bool:
     sys.path.insert(0, str(PROJECT_ROOT))
     try:
         from script.config import MODEL_CONFIGS
+
         if "fce_wiou" in MODEL_CONFIGS:
             cfg = MODEL_CONFIGS["fce_wiou"]
-            print(f"✓ fce_wiou 配置已注册")
+            print("✓ fce_wiou 配置已注册")
             print(f"    yaml_path: {cfg.yaml_path}")
             print(f"    freeze: {cfg.freeze}, 两阶段: {cfg.is_two_stage()}")
             print(f"    result_pattern: {cfg.result_pattern}")
@@ -73,14 +74,14 @@ def pre_check() -> bool:
     # 3. train.py 入口存在
     train_py = PROJECT_ROOT / "script" / "train.py"
     if train_py.exists():
-        print(f"✓ train.py 存在")
+        print("✓ train.py 存在")
     else:
         print(f"✗ train.py 缺失: {train_py}")
         ok = False
 
     # 4. 数据集可访问性（从默认配置推断，不强依赖 data.yaml 路径）
     #    实际训练时 train.py 会读 config，这里只做软提醒
-    print(f"ℹ 数据集路径将由 config.py 的 DATASET_PRESETS 提供（训练时若报错请检查 data.yaml）")
+    print("ℹ 数据集路径将由 config.py 的 DATASET_PRESETS 提供（训练时若报错请检查 data.yaml）")
 
     if ok:
         print("\n✅ 自检通过，可开始训练")
@@ -91,8 +92,9 @@ def pre_check() -> bool:
 
 # ==================== 训练后校验 ====================
 
+
 def parse_args_yaml(args_path: Path) -> dict:
-    """简单解析 ultralytics 的 args.yaml（key: value 格式，无需 pyyaml）。"""
+    """简单解析 ultralytics 的 args.yaml（key: value 格式，无需 pyyaml）。."""
     d = {}
     for line in args_path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -105,7 +107,7 @@ def parse_args_yaml(args_path: Path) -> dict:
 
 
 def post_check(runs_detect: Path) -> bool:
-    """训练后校验：确认确实用了 WIoU、正确的模型、训练轮数充足。"""
+    """训练后校验：确认确实用了 WIoU、正确的模型、训练轮数充足。."""
     print("\n" + "=" * 60)
     print("【训练后校验】")
     print("=" * 60)
@@ -132,16 +134,16 @@ def post_check(runs_detect: Path) -> bool:
 
     if iou != EXPECT_IOU_TYPE:
         print(f"✗ iou_type 不是 {EXPECT_IOU_TYPE}！实际为 {iou!r}")
-        print(f"  这意味着训练时漏传了 --iou-type WIoU，已静默退化为 CIoU。结果无效，需重跑。")
+        print("  这意味着训练时漏传了 --iou-type WIoU，已静默退化为 CIoU。结果无效，需重跑。")
         ok = False
     else:
-        print(f"✓ iou_type = WIoU，损失函数正确")
+        print("✓ iou_type = WIoU，损失函数正确")
 
     if model != EXPECT_MODEL_YAML:
         print(f"✗ model 不是 {EXPECT_MODEL_YAML}！实际为 {model!r}")
         ok = False
     else:
-        print(f"✓ model 配置正确")
+        print("✓ model 配置正确")
 
     # 2. results.csv 存在 + 轮数充足
     csv = exp_dir / "results.csv"
@@ -150,6 +152,7 @@ def post_check(runs_detect: Path) -> bool:
         return False
     try:
         import pandas as pd
+
         df = pd.read_csv(csv)
         df.columns = [c.strip() for c in df.columns]
         total = int(df["epoch"].iloc[-1])
@@ -158,7 +161,7 @@ def post_check(runs_detect: Path) -> bool:
             print(f"⚠ 训练轮数 {total} < {MIN_EPOCHS}，可能异常（正常应 300 或早停）")
             # 不直接判失败，早停也可能合理，仅警告
         else:
-            print(f"✓ 训练轮数充足")
+            print("✓ 训练轮数充足")
 
         # best 指标预览
         col = "metrics/mAP50-95(B)"
@@ -166,11 +169,13 @@ def post_check(runs_detect: Path) -> bool:
             bi = df[col].idxmax()
             row = df.loc[bi]
             print(f"\n  📊 best 指标预览（ep{int(row['epoch'])}）:")
-            print(f"     P={row['metrics/precision(B)']*100:.2f} "
-                  f"R={row['metrics/recall(B)']*100:.2f} "
-                  f"mAP50={row['metrics/mAP50(B)']*100:.2f} "
-                  f"mAP50-95={row[col]*100:.2f}")
-            print(f"     对照 ③ fce_m: mAP50-95=80.53（看 ④ 是否 > ③）")
+            print(
+                f"     P={row['metrics/precision(B)'] * 100:.2f} "
+                f"R={row['metrics/recall(B)'] * 100:.2f} "
+                f"mAP50={row['metrics/mAP50(B)'] * 100:.2f} "
+                f"mAP50-95={row[col] * 100:.2f}"
+            )
+            print("     对照 ③ fce_m: mAP50-95=80.53（看 ④ 是否 > ③）")
     except Exception as e:
         print(f"⚠ 读取 results.csv 失败: {e}")
 
@@ -183,15 +188,12 @@ def post_check(runs_detect: Path) -> bool:
 
 # ==================== 主流程 ====================
 
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="第④组（FCE+WIoU）一键训练 + 自检 + 打包")
-    parser.add_argument("--check", action="store_true",
-                        help="仅训练前自检（dry-run，不训练）")
-    parser.add_argument("--skip-train", action="store_true",
-                        help="跳过训练（训练已完成），只做校验 + 打包")
-    parser.add_argument("--runs-dir", default="runs/detect",
-                        help="runs 目录，默认 runs/detect")
+    parser = argparse.ArgumentParser(description="第④组（FCE+WIoU）一键训练 + 自检 + 打包")
+    parser.add_argument("--check", action="store_true", help="仅训练前自检（dry-run，不训练）")
+    parser.add_argument("--skip-train", action="store_true", help="跳过训练（训练已完成），只做校验 + 打包")
+    parser.add_argument("--runs-dir", default="runs/detect", help="runs 目录，默认 runs/detect")
     args = parser.parse_args()
 
     runs_detect = (PROJECT_ROOT / args.runs_dir).resolve()
@@ -209,8 +211,13 @@ def main():
         print("【开始训练】第④组 fce_wiou_m（WIoU）")
         print("=" * 60)
         cmd = [
-            sys.executable, "script/train.py",
-            "fce_wiou", "--scale", "m", "--iou-type", "WIoU",
+            sys.executable,
+            "script/train.py",
+            "fce_wiou",
+            "--scale",
+            "m",
+            "--iou-type",
+            "WIoU",
         ]
         print(f"执行: {' '.join(cmd)}")
         print(f"工作目录: {PROJECT_ROOT}")
@@ -243,13 +250,13 @@ def main():
     print("\n" + "=" * 60)
     print("🎉 全部完成！")
     print("=" * 60)
-    print(f"\n下载方式（在本机 Windows 执行）:")
+    print("\n下载方式（在本机 Windows 执行）:")
     print(f"  scp <工作站>:~/workspace/my_project/fce-yolo/runs/{EXP_NAME}.zip .")
-    print(f"\n解压后放到（本机）:")
+    print("\n解压后放到（本机）:")
     print(f"  D:\\Box\\Project\\Visual Guidance Robotic Arm\\实验\\3月测试\\baselinevsbifpnvsfce_m_300\\{EXP_NAME}\\")
-    print(f"\n然后本机分析:")
-    print(f"  1. python 工具脚本/regen_metrics_summary.py   # ④纳入汇总")
-    print(f"  2. python script/paper_plots.py               # 重出 4 线对比图")
+    print("\n然后本机分析:")
+    print("  1. python 工具脚本/regen_metrics_summary.py   # ④纳入汇总")
+    print("  2. python script/paper_plots.py               # 重出 4 线对比图")
 
 
 if __name__ == "__main__":

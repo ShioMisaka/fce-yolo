@@ -1,5 +1,5 @@
 """
-论文交融实验图表生成模块（FCE-YOLOv11）
+论文交融实验图表生成模块（FCE-YOLOv11）.
 
 基于本机已有训练产物（results.csv / best.pt / 训练期图片），产出论文级图表：
   A. 训练曲线对比图（metrics 4合1 + loss 4合1）
@@ -31,7 +31,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd  # noqa: E402
 
-from script.analysis import load_results, extract_metrics  # noqa: E402
+from script.analysis import extract_metrics, load_results  # noqa: E402
 
 # ==================== 全局路径与配色常量 ====================
 
@@ -69,14 +69,14 @@ RUNS = {
 DISPLAY = {
     "baseline": "YOLOv11（基线）",
     "bifpn": "+BiFPN",
-    "fce": "+BiFPN+注意力",     # ③ = FCE结构 + CIoU
-    "fce_wiou": "FCE（完整）",   # ④ = FCE结构 + WIoU
+    "fce": "+BiFPN+注意力",  # ③ = FCE结构 + CIoU
+    "fce_wiou": "FCE（完整）",  # ④ = FCE结构 + WIoU
 }
 COLORS = {
-    "baseline": "#0BDBEB",   # 青
-    "bifpn": "#042AFF",      # 蓝
-    "fce": "#FF6B00",        # 橙
-    "fce_wiou": "#E91E63",   # 品红（WIoU 突出）
+    "baseline": "#0BDBEB",  # 青
+    "bifpn": "#042AFF",  # 蓝
+    "fce": "#FF6B00",  # 橙
+    "fce_wiou": "#E91E63",  # 品红（WIoU 突出）
 }
 LINESTYLES = {"baseline": "--", "bifpn": "-.", "fce": ":", "fce_wiou": "-"}
 
@@ -96,12 +96,14 @@ CLASS_NAMES_CN = {0: "圆形底座", 1: "方形工件"}
 
 # ==================== 中文字体配置 ====================
 
+
 def setup_cn_font():
-    """配置 matplotlib 中文字体，避免中文渲染成方框。
+    """配置 matplotlib 中文字体，避免中文渲染成方框。.
 
     Windows 优先用系统自带的中文字体；找不到则回退并提示。
     """
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib import font_manager
@@ -111,18 +113,20 @@ def setup_cn_font():
     available = {f.name for f in font_manager.fontManager.ttflist}
     chosen = next((c for c in candidates if c in available), None)
 
-    plt.rcParams.update({
-        "font.sans-serif": [chosen] if chosen else candidates,
-        "font.family": "sans-serif",
-        "axes.unicode_minus": False,   # 负号正常显示
-        "font.size": 11,
-        "axes.linewidth": 1.0,
-        "axes.grid": True,
-        "grid.alpha": 0.25,
-        "lines.linewidth": 2,
-        "figure.dpi": 150,
-        "savefig.dpi": 300,            # 论文级分辨率
-    })
+    plt.rcParams.update(
+        {
+            "font.sans-serif": [chosen] if chosen else candidates,
+            "font.family": "sans-serif",
+            "axes.unicode_minus": False,  # 负号正常显示
+            "font.size": 11,
+            "axes.linewidth": 1.0,
+            "axes.grid": True,
+            "grid.alpha": 0.25,
+            "lines.linewidth": 2,
+            "figure.dpi": 150,
+            "savefig.dpi": 300,  # 论文级分辨率
+        }
+    )
     if chosen:
         print(f"✓ 中文字体: {chosen}")
     else:
@@ -132,8 +136,9 @@ def setup_cn_font():
 
 # ==================== 产出 A：训练曲线对比 ====================
 
+
 def _metric_ylabels():
-    """metrics 4合1 的列配置：(csv列名, 中文标题, y轴标签)"""
+    """Metrics 4合1 的列配置：(csv列名, 中文标题, y轴标签)."""
     return [
         ("metrics/mAP50-95(B)", "mAP@[50-95] 对比", "mAP@[50-95]"),
         ("metrics/mAP50(B)", "mAP@50 对比", "mAP@50"),
@@ -143,7 +148,7 @@ def _metric_ylabels():
 
 
 def _loss_subplots():
-    """loss 4合1 的列配置：4个子图（train 三个 loss + val box loss）"""
+    """Loss 4合1 的列配置：4个子图（train 三个 loss + val box loss）."""
     return [
         ("train/box_loss", "训练 Box Loss", "Box Loss"),
         ("train/cls_loss", "训练 Cls Loss", "Cls Loss"),
@@ -153,7 +158,7 @@ def _loss_subplots():
 
 
 def plot_comparison(dfs, col_config, save_path, fig_title):
-    """通用 2x2 对比绘图（共用配色/线型/字体）。
+    """通用 2x2 对比绘图（共用配色/线型/字体）。.
 
     Args:
         dfs: {key: DataFrame}
@@ -169,9 +174,12 @@ def plot_comparison(dfs, col_config, save_path, fig_title):
             if col not in df.columns:
                 continue
             ax.plot(
-                df["epoch"], df[col],
-                color=COLORS[k], linestyle=LINESTYLES[k],
-                label=DISPLAY[k], linewidth=2,
+                df["epoch"],
+                df[col],
+                color=COLORS[k],
+                linestyle=LINESTYLES[k],
+                label=DISPLAY[k],
+                linewidth=2,
             )
         ax.set_title(subtitle, fontsize=13, fontweight="bold")
         ax.set_xlabel("训练轮次 Epoch")
@@ -186,7 +194,7 @@ def plot_comparison(dfs, col_config, save_path, fig_title):
 
 
 def produce_A():
-    """产出 A：训练曲线对比图（metrics + loss 各一张）"""
+    """产出 A：训练曲线对比图（metrics + loss 各一张）."""
     print("\n" + "=" * 60)
     print("产出 A：训练曲线对比图")
     print("=" * 60)
@@ -196,13 +204,15 @@ def produce_A():
     out = OUT_DIRS["A"]
     # A1：metrics
     plot_comparison(
-        dfs, _metric_ylabels(),
+        dfs,
+        _metric_ylabels(),
         out / "A1_metrics_对比曲线.png",
         "m 规模四模型训练过程指标对比（FCE-YOLOv11 消融）",
     )
     # A2：loss
     plot_comparison(
-        dfs, _loss_subplots(),
+        dfs,
+        _loss_subplots(),
         out / "A2_loss_对比曲线.png",
         "m 规模四模型训练/验证损失对比（FCE-YOLOv11 消融）",
     )
@@ -210,18 +220,20 @@ def produce_A():
 
 # ==================== 产出 B：消融指标表格 ====================
 
+
 def _compute_model_complexity(weights_path, imgsz=1280):
-    """计算 Params 与 GFLOPs（CPU 可跑）。
+    """计算 Params 与 GFLOPs（CPU 可跑）。.
 
     ultralytics 8.3.x 的 model.info() 返回 None（直接打印），因此这里：
-      - params 用 sum(p.numel()) 直接统计
-      - gflops 用 torch_utils.get_flops(model, imgsz)
+    - params 用 sum(p.numel()) 直接统计
+    - gflops 用 torch_utils.get_flops(model, imgsz)
     返回 (params_M, gflops)。失败返回 (None, None)。
     """
-    import contextlib, io
     import torch
+
     from ultralytics import YOLO
     from ultralytics.utils.torch_utils import get_flops
+
     torch.set_num_threads(4)  # CPU 限线程，避免资源告警
 
     m = YOLO(str(weights_path))
@@ -233,7 +245,7 @@ def _compute_model_complexity(weights_path, imgsz=1280):
 
 
 def produce_B():
-    """产出 B：消融指标表格（MD + CSV）"""
+    """产出 B：消融指标表格（MD + CSV）."""
     print("\n" + "=" * 60)
     print("产出 B：消融指标表格")
     print("=" * 60)
@@ -241,10 +253,10 @@ def produce_B():
     rows = []
     # 四行全部用真实数据（④ fce_wiou 已回传）
     spec = [
-        ("①", "baseline",  "YOLOv11 基线",      "标准结构 + CIoU",                     "—",     "CIoU"),
-        ("②", "bifpn",     "+BiFPN",            "BiFPN 加权融合 + CIoU",               "F",     "CIoU"),
-        ("③", "fce",       "+BiFPN+注意力",     "BiFPN + BiCoordCrossAtt×2 + CIoU",    "F+C",   "CIoU"),
-        ("④", "fce_wiou",  "+BiFPN+注意力+WIoU","BiFPN + BiCoordCrossAtt×2 + WIoU",   "F+C+E", "WIoU"),
+        ("①", "baseline", "YOLOv11 基线", "标准结构 + CIoU", "—", "CIoU"),
+        ("②", "bifpn", "+BiFPN", "BiFPN 加权融合 + CIoU", "F", "CIoU"),
+        ("③", "fce", "+BiFPN+注意力", "BiFPN + BiCoordCrossAtt×2 + CIoU", "F+C", "CIoU"),
+        ("④", "fce_wiou", "+BiFPN+注意力+WIoU", "BiFPN + BiCoordCrossAtt×2 + WIoU", "F+C+E", "WIoU"),
     ]
     prev_map5095 = None
     for idx, key, name, improve, module, loss in spec:
@@ -264,18 +276,23 @@ def produce_B():
         # 复杂度
         print(f"  计算 {name} 复杂度 (best.pt) ...")
         params_m, gflops = _compute_model_complexity(RUNS[key]["weights"], imgsz=1280)
-        rows.append({
-            "序号": idx, "模型": name, "改进": improve, "FCE模块": module,
-            "损失": loss,
-            "best轮次": best_ep,
-            "Precision": round(prec * 100, 2),
-            "Recall": round(rec * 100, 2),
-            "mAP50": round(p50 * 100, 2),
-            "mAP50-95": cur_map5095,
-            "ΔmAP50-95": delta,
-            "Params(M)": round(params_m, 2) if params_m else "N/A",
-            "GFLOPs": round(gflops, 1) if gflops else "N/A",
-        })
+        rows.append(
+            {
+                "序号": idx,
+                "模型": name,
+                "改进": improve,
+                "FCE模块": module,
+                "损失": loss,
+                "best轮次": best_ep,
+                "Precision": round(prec * 100, 2),
+                "Recall": round(rec * 100, 2),
+                "mAP50": round(p50 * 100, 2),
+                "mAP50-95": cur_map5095,
+                "ΔmAP50-95": delta,
+                "Params(M)": round(params_m, 2) if params_m else "N/A",
+                "GFLOPs": round(gflops, 1) if gflops else "N/A",
+            }
+        )
 
     df_out = pd.DataFrame(rows)
     out_dir = OUT_DIRS["B"]
@@ -291,9 +308,11 @@ def produce_B():
     cols = list(df_out.columns)
     lines = []
     lines.append("# 表4-1 消融实验结果（m 规模，imgsz=1280，best 指标）\n")
-    lines.append("> 训练配置：AdamW, lr0=0.001, batch=32, 余弦退火, 300 epochs, "
-                 "两阶段(stage1 warmup 50ep freeze=10 + stage2 finetune 250ep), "
-                 "close_mosaic=20, patience=50")
+    lines.append(
+        "> 训练配置：AdamW, lr0=0.001, batch=32, 余弦退火, 300 epochs, "
+        "两阶段(stage1 warmup 50ep freeze=10 + stage2 finetune 250ep), "
+        "close_mosaic=20, patience=50"
+    )
     lines.append(">")
     lines.append("> 数据集：haixi_jixieshou/yolo_dataset（2 类：圆形底座、方形工件）")
     lines.append("> best 指标定义：验证集 mAP50-95 最高那一轮（YOLO 标准报告方式）\n")
@@ -314,8 +333,9 @@ def produce_B():
 
 # ==================== 产出 C：检测可视化对比 ====================
 
+
 def produce_C():
-    """产出 C：val_batch0 预测图竖排对比（GT + 三模型）"""
+    """产出 C：val_batch0 预测图竖排对比（GT + 三模型）."""
     print("\n" + "=" * 60)
     print("产出 C：检测可视化对比图")
     print("=" * 60)
@@ -325,9 +345,9 @@ def produce_C():
     panels = [
         ("真值标注 GT (val_batch0_labels)", RUNS["baseline"]["dir"] / "val_batch0_labels.jpg"),
         ("YOLOv11 基线 (val_batch0_pred)", RUNS["baseline"]["dir"] / "val_batch0_pred.jpg"),
-        ("+BiFPN (val_batch0_pred)",        RUNS["bifpn"]["dir"] / "val_batch0_pred.jpg"),
+        ("+BiFPN (val_batch0_pred)", RUNS["bifpn"]["dir"] / "val_batch0_pred.jpg"),
         ("+BiFPN+注意力 [CIoU] (val_batch0_pred)", RUNS["fce"]["dir"] / "val_batch0_pred.jpg"),
-        ("FCE 完整 [WIoU] (val_batch0_pred)",     RUNS["fce_wiou"]["dir"] / "val_batch0_pred.jpg"),
+        ("FCE 完整 [WIoU] (val_batch0_pred)", RUNS["fce_wiou"]["dir"] / "val_batch0_pred.jpg"),
     ]
     for title, p in panels:
         if not p.exists():
@@ -344,8 +364,7 @@ def produce_C():
 
     # 字体（中文）
     font = None
-    for fp in ["C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf",
-               "C:/Windows/Fonts/msyhbd.ttc"]:
+    for fp in ["C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf", "C:/Windows/Fonts/msyhbd.ttc"]:
         if Path(fp).exists():
             font = ImageFont.truetype(fp, 30)
             break
@@ -369,12 +388,14 @@ def produce_C():
 
 # ==================== 产出 D：PR/F1/混淆矩阵中文化 ====================
 
+
 def _hstack_with_titles(panels, out_path, fig_title, subtitle_h=60):
-    """横向拼接图片并在每张上方加中文小标题。
+    """横向拼接图片并在每张上方加中文小标题。.
 
     panels: [(subtitle, path), ...]
     """
     from PIL import Image, ImageDraw, ImageFont
+
     for _, p in panels:
         if not p.exists():
             print(f"⚠ 缺图: {p}")
@@ -423,11 +444,9 @@ def _hstack_with_titles(panels, out_path, fig_title, subtitle_h=60):
 
 
 def produce_D():
-    """产出 D：PR/F1/混淆矩阵 中文化拼接
+    """产出 D：PR/F1/混淆矩阵 中文化拼接.
 
-    说明：results.csv 只有逐 epoch 聚合指标，不含逐阈值 PR 数据点；
-    本机又无数据集无法重跑 val() 生成中文 PR 曲线。
-    故采用「四模型图横向拼接 + 中文标题」方案：曲线本身保留 YOLO 原图，
+    说明：results.csv 只有逐 epoch 聚合指标，不含逐阈值 PR 数据点； 本机又无数据集无法重跑 val() 生成中文 PR 曲线。 故采用「四模型图横向拼接 + 中文标题」方案：曲线本身保留 YOLO 原图，
     顶部加中文小标题与整体大标题，论文图注用中文解释。
     """
     print("\n" + "=" * 60)
@@ -438,10 +457,10 @@ def produce_D():
     # D1：四模型 PR 曲线横向拼接
     _hstack_with_titles(
         [
-            ("YOLOv11 基线",      RUNS["baseline"]["dir"] / "BoxPR_curve.png"),
-            ("+BiFPN",            RUNS["bifpn"]["dir"] / "BoxPR_curve.png"),
-            ("+BiFPN+注意力",     RUNS["fce"]["dir"] / "BoxPR_curve.png"),
-            ("FCE 完整 (WIoU)",   RUNS["fce_wiou"]["dir"] / "BoxPR_curve.png"),
+            ("YOLOv11 基线", RUNS["baseline"]["dir"] / "BoxPR_curve.png"),
+            ("+BiFPN", RUNS["bifpn"]["dir"] / "BoxPR_curve.png"),
+            ("+BiFPN+注意力", RUNS["fce"]["dir"] / "BoxPR_curve.png"),
+            ("FCE 完整 (WIoU)", RUNS["fce_wiou"]["dir"] / "BoxPR_curve.png"),
         ],
         out_dir / "D1_PR曲线_四模型对比.png",
         "四模型 PR 曲线对比（m 规模）",
@@ -450,10 +469,10 @@ def produce_D():
     # D2：四模型 F1 曲线横向拼接
     _hstack_with_titles(
         [
-            ("YOLOv11 基线",      RUNS["baseline"]["dir"] / "BoxF1_curve.png"),
-            ("+BiFPN",            RUNS["bifpn"]["dir"] / "BoxF1_curve.png"),
-            ("+BiFPN+注意力",     RUNS["fce"]["dir"] / "BoxF1_curve.png"),
-            ("FCE 完整 (WIoU)",   RUNS["fce_wiou"]["dir"] / "BoxF1_curve.png"),
+            ("YOLOv11 基线", RUNS["baseline"]["dir"] / "BoxF1_curve.png"),
+            ("+BiFPN", RUNS["bifpn"]["dir"] / "BoxF1_curve.png"),
+            ("+BiFPN+注意力", RUNS["fce"]["dir"] / "BoxF1_curve.png"),
+            ("FCE 完整 (WIoU)", RUNS["fce_wiou"]["dir"] / "BoxF1_curve.png"),
         ],
         out_dir / "D2_F1曲线_四模型对比.png",
         "四模型 F1 曲线对比（m 规模）",
@@ -461,8 +480,7 @@ def produce_D():
 
     # D3：FCE(WIoU) 的归一化混淆矩阵（完整FCE 的最终结果）
     _hstack_with_titles(
-        [("FCE 完整 (WIoU)（归一化混淆矩阵）",
-          RUNS["fce_wiou"]["dir"] / "confusion_matrix_normalized.png")],
+        [("FCE 完整 (WIoU)（归一化混淆矩阵）", RUNS["fce_wiou"]["dir"] / "confusion_matrix_normalized.png")],
         out_dir / "D3_FCE混淆矩阵.png",
         "FCE(WIoU) 归一化混淆矩阵（类别：0=圆形底座, 1=方形工件）",
     )
@@ -470,10 +488,13 @@ def produce_D():
 
 # ==================== 主入口 ====================
 
+
 def main():
     parser = argparse.ArgumentParser(description="论文交融实验图表生成")
     parser.add_argument(
-        "--only", default="", type=str,
+        "--only",
+        default="",
+        type=str,
         help="只产出指定项，逗号分隔，如 A,B,C,D；默认全部",
     )
     args = parser.parse_args()
