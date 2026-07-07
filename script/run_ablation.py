@@ -161,11 +161,16 @@ def build_train_config(recipe: dict, model_key: str) -> TrainConfig:
     - per_model override（2026-07-07 新增）：recipe 的 per_model.<model_key> 可覆盖
       shared 中的任意字段（如 fce_wiou 关 mixup/copy_paste、设 box 权重）。
       per_model 优先级高于 shared；freeze_override 不在此处理（见 build_model_cfg_with_fairness）。
+    - per_model.stage2_override（2026-07-07 新增）：嵌套 dict，覆盖 stage2 的 StageConfig
+      字段（如 patience/cos_lr/close_mosaic）。用于给特定模型放宽早停等阶段级差异。
+      per_model.stage1_override 同理（暂未使用，对称设计）。
     """
     shared = dict(recipe["shared"])
     per_model = recipe.get("per_model", {}) or {}
     per = dict(per_model.get(model_key, {}) or {})
     per.pop("freeze_override", None)  # freeze 由 build_model_cfg_with_fairness 处理
+    stage2_override = per.pop("stage2_override", {}) or {}
+    stage1_override = per.pop("stage1_override", {}) or {}
     merged = {**shared, **per}  # per_model 覆盖 shared
     iou_override = recipe.get("iou_override", {}) or {}
     iou_type = iou_override.get(model_key, "CIoU")
@@ -178,8 +183,11 @@ def build_train_config(recipe: dict, model_key: str) -> TrainConfig:
     config.iou_type = iou_type
     config.extra_args = extra
     # 关键：trainer 从 config.stage1/stage2 取阶段配置，必须用配方的 StageConfig 覆盖默认值
-    config.stage1 = StageConfig(**recipe["stage1"])
-    config.stage2 = StageConfig(**recipe["stage2"])
+    # 再应用 per_model 的 stage 级 override（如 fce_wiou 放宽 patience）
+    s1_fields = {**recipe["stage1"], **stage1_override}
+    s2_fields = {**recipe["stage2"], **stage2_override}
+    config.stage1 = StageConfig(**s1_fields)
+    config.stage2 = StageConfig(**s2_fields)
     return config
 
 
@@ -275,6 +283,8 @@ def _recipe_fingerprint(recipe: dict, model_key: str) -> str:
     2026-07-07 扩白名单：把 shared 的正则化字段（mixup/copy_paste/dropout/weight_decay/
     warmup_epochs/box）和 per_model override 全部纳入 hash。此前这些字段改了但
     stage 预算没变时指纹不变，会复用旧结果（潜在隐患）。
+    2026-07-07 再扩：stage2_override（如 per-model patience）单独入指纹，避免
+    改了 patience 但其他字段没变时指纹不变。
     """
     import hashlib, json
     iou_override = recipe.get("iou_override", {}) or {}
@@ -283,6 +293,9 @@ def _recipe_fingerprint(recipe: dict, model_key: str) -> str:
     per = per_model.get(model_key, {}) or {}
     # 全局 freeze 可能被 per_model.freeze_override 覆盖，取实际生效值
     effective_freeze = per.get("freeze_override", recipe.get("freeze", 0))
+    # per_model 的 stage2/stage1 override（嵌套 dict），单独入指纹
+    stage2_override = per.get("stage2_override", {}) or {}
+    stage1_override = per.get("stage1_override", {}) or {}
     key_fields = {
         "stage1_epochs": recipe.get("stage1", {}).get("epochs", 0),
         "stage1_lr0": recipe.get("stage1", {}).get("lr0"),
@@ -302,8 +315,11 @@ def _recipe_fingerprint(recipe: dict, model_key: str) -> str:
         "weight_decay": shared.get("weight_decay"),
         "warmup_epochs": shared.get("warmup_epochs"),
         "box": shared.get("box", 7.5),  # box loss 权重（默认 7.5）
-        # per_model override（此模型专属的任何覆盖字段都进 hash）
+        # per_model override（此模型专属的任何覆盖字段都进 hash，含 freeze_override）
         "per_model_override": dict(sorted(per.items())),
+        # stage 级 override（嵌套结构，整体入指纹；无 override 时为空 dict，不影响无 override 的模型）
+        "stage2_override": dict(sorted(stage2_override.items())),
+        "stage1_override": dict(sorted(stage1_override.items())),
     }
     # sort_keys 保证字段顺序变化不影响 hash
     s = json.dumps(key_fields, sort_keys=True, default=str)

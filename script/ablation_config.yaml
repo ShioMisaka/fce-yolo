@@ -72,26 +72,34 @@ iou_override:
 
 # ===== per-model 覆盖（2026-07-07 新增）=====
 # 让特定模型覆盖 shared 的字段，或设置专属训练策略。per_model 优先级高于 shared。
-# 支持两类覆盖：
+# 支持三类覆盖：
 #   1. 任意 shared 字段（mixup/copy_paste/dropout/box/weight_decay/warmup_epochs 等）：
 #      直接写在 per_model.<model> 下，会 merge 进 TrainConfig（recognized 或 extra_args）。
 #   2. freeze_override：覆盖全局 freeze，仅作用于 stage1（由 build_model_cfg_with_fairness 注入）。
+#   3. stage2_override / stage1_override：嵌套 dict，覆盖阶段级 StageConfig 字段
+#      （patience/cos_lr/close_mosaic 等）。如 per-model 放宽早停。
 #
-# 2026-07-07 诊断证据：fair_20260706 M4(WIoU)=0.7706，比 M1 低 5.38，根因是 WIoU v3 的
-# 动态聚焦机制（β=离群度，降权离群样本）与 mixup/copy_paste 制造的合成 bbox 冲突——
-# 合成正样本被误判为离群 noisy label 而遭降权。同时 WIoU 的 exp(ρ²/C²) 乘子让 box loss
-# 翻倍（M4 ep1 train_box=4.06 vs M1=2.07），在默认 box=7.5 下挤压 cls/dfl 学习。
-# 历史规律：正则越强 WIoU 越差（fair_20260703 轻度正则 M4=0.8453，本次强正则 M4=0.7706）。
+# === 2026-07-07 诊断与配方演进 ===
+# fair_20260706（box=7.5, mixup=0.15）：M4=0.7706，根因是 WIoU v3 聚焦机制与强正则冲突
+#   + box loss 被 exp() 放大（M4 train_box=4.06 vs M1=2.07）。
+# fair_20260707（box=5.0, mixup=0）：M4=0.7952（+2.46），box 补偿成功（train_box 4.06→2.30），
+#   但关掉正则后 gap=+34%（过拟合反向出现），ratio=0.813（高IoU仍弱）。M3=0.8393 验证
+#   freeze_override=6 有效（+1.48），予以保留。
+# 本次（box=5.0, mixup=0.08, patience=80）：折中——给 WIoU 轻正则防过拟合，但不强到
+#   触发聚焦误判；放宽 patience 让 M4 有更多高 IoU 回归优化空间（M4 best@228 距末轮仅 22ep）。
 per_model:
   fce_wiou:
-    mixup: 0.0          # 关闭：WIoU v3 聚焦机制与 mixup 的合成 bbox 冲突
-    copy_paste: 0.0     # 关闭：同上，避免合成目标被误判为离群样本
-    box: 5.0            # 默认 7.5→5.0，补偿 WIoU 的 exp() 放大（≈0.67x，抵消 loss 翻倍）
+    mixup: 0.08           # 0.15→0→0.08：不全关（防过拟合），但大幅降低（避聚焦误判）
+    copy_paste: 0.0       # 保持关闭：copy_paste 的粘贴目标 IoU 中心距偏大，更易触发 WIoU 误判
+    box: 5.0              # 保持：补偿 WIoU 的 exp() 放大（已验证 train_box 降到与 M1 同量级）
+    stage2_override:
+      patience: 80        # 50→80：M4 收敛慢（best@228），放宽早停给高 IoU 回归更多优化空间
   fce:
-    # M3 注意力增益强化：stage1 加深冻结到层 0-5（含第一个 BiCoordCrossAtt 之前的所有层），
+    # M3 注意力增益强化（已验证有效，fair_20260707 M3=0.8393，+1.48 vs 0706 的 0.8245）：
+    # stage1 加深冻结到层 0-5（含第一个 BiCoordCrossAtt 之前的所有 backbone），
     # 逼 stage1 梯度集中到注意力层 8 及后续，让注意力模块先充分预热。
-    # 当前 M3−M2 仅 +0.08（注意力贡献不显著），目标拉到 >+1.0。
-    # 注意：层 5 本身是注意力，freeze=6 冻结 0-5 含层5，但层8仍可训练；stage2 全解冻。
+    # 机制：freeze=4 时注意力和 16 层 backbone 同时竞争梯度；freeze=6 让注意力先学，
+    # stage2 解冻后注意力已处于良好工作点。收益在训练动态（早期 ep5-15 领先最大），非权重幅值。
     freeze_override: 6
 
 # ===== 输出 =====
