@@ -70,6 +70,30 @@ models: [baseline, bifpn, fce, fce_wiou]   # ①②③④ 消融阶梯
 iou_override:
   fce_wiou: WIoU
 
+# ===== per-model 覆盖（2026-07-07 新增）=====
+# 让特定模型覆盖 shared 的字段，或设置专属训练策略。per_model 优先级高于 shared。
+# 支持两类覆盖：
+#   1. 任意 shared 字段（mixup/copy_paste/dropout/box/weight_decay/warmup_epochs 等）：
+#      直接写在 per_model.<model> 下，会 merge 进 TrainConfig（recognized 或 extra_args）。
+#   2. freeze_override：覆盖全局 freeze，仅作用于 stage1（由 build_model_cfg_with_fairness 注入）。
+#
+# 2026-07-07 诊断证据：fair_20260706 M4(WIoU)=0.7706，比 M1 低 5.38，根因是 WIoU v3 的
+# 动态聚焦机制（β=离群度，降权离群样本）与 mixup/copy_paste 制造的合成 bbox 冲突——
+# 合成正样本被误判为离群 noisy label 而遭降权。同时 WIoU 的 exp(ρ²/C²) 乘子让 box loss
+# 翻倍（M4 ep1 train_box=4.06 vs M1=2.07），在默认 box=7.5 下挤压 cls/dfl 学习。
+# 历史规律：正则越强 WIoU 越差（fair_20260703 轻度正则 M4=0.8453，本次强正则 M4=0.7706）。
+per_model:
+  fce_wiou:
+    mixup: 0.0          # 关闭：WIoU v3 聚焦机制与 mixup 的合成 bbox 冲突
+    copy_paste: 0.0     # 关闭：同上，避免合成目标被误判为离群样本
+    box: 5.0            # 默认 7.5→5.0，补偿 WIoU 的 exp() 放大（≈0.67x，抵消 loss 翻倍）
+  fce:
+    # M3 注意力增益强化：stage1 加深冻结到层 0-5（含第一个 BiCoordCrossAtt 之前的所有层），
+    # 逼 stage1 梯度集中到注意力层 8 及后续，让注意力模块先充分预热。
+    # 当前 M3−M2 仅 +0.08（注意力贡献不显著），目标拉到 >+1.0。
+    # 注意：层 5 本身是注意力，freeze=6 冻结 0-5 含层5，但层8仍可训练；stage2 全解冻。
+    freeze_override: 6
+
 # ===== 输出 =====
 # run_ablation.py 自动创建 runs/outputs/fair_<ts>/，无需配置 output_root。
 copy_stage1: false      # 默认只复制 stage2（节磁盘）；stage1 留 runs/detect/

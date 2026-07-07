@@ -129,9 +129,18 @@ def build_model_cfg_with_fairness(model_key: str, recipe: dict) -> ModelConfig:
       一起预热，避免旧版 freeze=10 冻住注意力层5/8 的问题）。freeze 不再决定阶段数。
 
     不改 config.py 全局 MODEL_CONFIGS，返回新对象。
+
+    per_model freeze_override（2026-07-07 新增）：
+      recipe 的 per_model.<model_key>.freeze_override 可覆盖全局 freeze，
+      仅作用于 stage1。用于给特定模型（如 fce/+注意力）更深的冻结策略，
+      逼 stage1 梯度集中到该模型的新增模块。stage2 仍全模型微调。
     """
     base_cfg = get_model_config(model_key)
     freeze = recipe["freeze"]
+    per_model = recipe.get("per_model", {}) or {}
+    per = per_model.get(model_key, {}) or {}
+    if "freeze_override" in per:
+        freeze = per["freeze_override"]
     stage1_cfg = recipe.get("stage1", {})
     is_single_stage = stage1_cfg.get("epochs", 0) == 0
     return replace(
@@ -149,14 +158,21 @@ def build_train_config(recipe: dict, model_key: str) -> TrainConfig:
       等共享超参）通过 extra_args 注入，由 to_dict() 展开到 train() kwargs。
     - stage1/stage2 必须写入 TrainConfig：trainer._build_train_args 从 self.config.stage1/stage2
       取阶段配置（而非从 model_cfg），所以这里不注入会导致 asdict(None) 崩溃。
+    - per_model override（2026-07-07 新增）：recipe 的 per_model.<model_key> 可覆盖
+      shared 中的任意字段（如 fce_wiou 关 mixup/copy_paste、设 box 权重）。
+      per_model 优先级高于 shared；freeze_override 不在此处理（见 build_model_cfg_with_fairness）。
     """
     shared = dict(recipe["shared"])
+    per_model = recipe.get("per_model", {}) or {}
+    per = dict(per_model.get(model_key, {}) or {})
+    per.pop("freeze_override", None)  # freeze 由 build_model_cfg_with_fairness 处理
+    merged = {**shared, **per}  # per_model 覆盖 shared
     iou_override = recipe.get("iou_override", {}) or {}
     iou_type = iou_override.get(model_key, "CIoU")
 
     train_fields = {f for f in TrainConfig.__dataclass_fields__}
-    recognized = {k: v for k, v in shared.items() if k in train_fields}
-    extra = {k: v for k, v in shared.items() if k not in train_fields}
+    recognized = {k: v for k, v in merged.items() if k in train_fields}
+    extra = {k: v for k, v in merged.items() if k not in train_fields}
 
     config = TrainConfig(**recognized)
     config.iou_type = iou_type
@@ -255,21 +271,39 @@ def _recipe_fingerprint(recipe: dict, model_key: str) -> str:
     配方任一关键字段变化 → 指纹变化 → 断点续跑视为不匹配 → 强制重训。
     这能根治"目录名相同但配方已改导致复用旧结果"的隐患（如 2026-07-03 的
     fce_wiou 残留事件：旧 300ep 单阶段产物被当成新 250ep 两阶段复用）。
+
+    2026-07-07 扩白名单：把 shared 的正则化字段（mixup/copy_paste/dropout/weight_decay/
+    warmup_epochs/box）和 per_model override 全部纳入 hash。此前这些字段改了但
+    stage 预算没变时指纹不变，会复用旧结果（潜在隐患）。
     """
     import hashlib, json
     iou_override = recipe.get("iou_override", {}) or {}
+    shared = recipe.get("shared", {}) or {}
+    per_model = recipe.get("per_model", {}) or {}
+    per = per_model.get(model_key, {}) or {}
+    # 全局 freeze 可能被 per_model.freeze_override 覆盖，取实际生效值
+    effective_freeze = per.get("freeze_override", recipe.get("freeze", 0))
     key_fields = {
         "stage1_epochs": recipe.get("stage1", {}).get("epochs", 0),
         "stage1_lr0": recipe.get("stage1", {}).get("lr0"),
         "stage2_epochs": recipe["stage2"]["epochs"],
         "stage2_lr0": recipe["stage2"]["lr0"],
-        "freeze": recipe["freeze"],
-        "seed": recipe.get("shared", {}).get("seed"),
-        "deterministic": recipe.get("shared", {}).get("deterministic"),
-        "degrees": recipe.get("shared", {}).get("degrees"),
-        "imgsz": recipe.get("shared", {}).get("imgsz"),
-        "batch": recipe.get("shared", {}).get("batch"),
+        "freeze": effective_freeze,
+        "seed": shared.get("seed"),
+        "deterministic": shared.get("deterministic"),
+        "degrees": shared.get("degrees"),
+        "imgsz": shared.get("imgsz"),
+        "batch": shared.get("batch"),
         "iou_type": iou_override.get(model_key, "CIoU"),
+        # 正则化字段（影响过拟合行为，必须纳入）
+        "mixup": shared.get("mixup", 0),
+        "copy_paste": shared.get("copy_paste", 0),
+        "dropout": shared.get("dropout", 0),
+        "weight_decay": shared.get("weight_decay"),
+        "warmup_epochs": shared.get("warmup_epochs"),
+        "box": shared.get("box", 7.5),  # box loss 权重（默认 7.5）
+        # per_model override（此模型专属的任何覆盖字段都进 hash）
+        "per_model_override": dict(sorted(per.items())),
     }
     # sort_keys 保证字段顺序变化不影响 hash
     s = json.dumps(key_fields, sort_keys=True, default=str)
@@ -293,6 +327,9 @@ def write_recipe_fingerprint(stage2_dir: Path, recipe: dict, model_key: str) -> 
             "freeze": recipe["freeze"],
             "iou_type": (recipe.get("iou_override") or {}).get(model_key, "CIoU"),
         },
+        "per_model_override": (  # 2026-07-07: 此模型的 per_model 覆盖项
+            sorted(((recipe.get("per_model") or {}).get(model_key, {}) or {}).items())
+        ),
     }
     with open(fp_file, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
