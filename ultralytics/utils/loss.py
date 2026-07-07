@@ -122,7 +122,7 @@ class BboxLoss(nn.Module):
     def _wiouv3_focusing(self, w_iou: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
         """Apply WIoU v3 dynamic non-monotonic focusing mechanism.
 
-        Computes the outlier degree β = (L_i / mean(L))^δ for each sample, then applies
+        Computes the outlier degree β = L_i / mean(L) for each sample, then applies
         a non-monotonic focusing coefficient r = β / (δ * α^(β-δ)) that:
         - Reduces gradient for very easy examples (β near 0)
         - Increases gradient for moderate examples near the peak
@@ -136,6 +136,16 @@ class BboxLoss(nn.Module):
 
         Returns:
             (torch.Tensor): Focusing coefficient r for each sample.
+
+        Note:
+            2026-07-07 bug 修复（对照官方 github.com/Instinct323/Wise-IoU 的 _scaled_loss）：
+              1. β 公式：原 `(L/mean)^δ`（δ 次幂）→ 改为 `L/mean`（线性，与官方一致）。
+                 旧版多余 .pow(δ) 让 β 在 L>mean 时指数爆炸（L=2*mean 时 β=2^3=8 而非 2），
+                 触发 α^(β-δ) 项使 r 断崖归零，难样本梯度消失（fair_0706/0707a/0707b
+                 M4 始终 <0.80、R 系统性偏低的根因）。
+              2. α 参数：原 `alpha = delta = 3.0` → 改为 `alpha = 1.9`（论文经验最优值）。
+                 α=3 让 α^(β-δ) 增长过陡，加剧聚焦曲线畸变。
+            保留 momentum=0.9、β 基于 WIoU loss 等差异（属风格差异，非致命 bug，最小修复不动）。
         """
         with torch.no_grad():
             loss_iou = 1.0 - w_iou.detach()  # L_{WIoUv1} per sample
@@ -145,16 +155,14 @@ class BboxLoss(nn.Module):
             if not hasattr(self, "_wiou_loss_mean"):
                 self._wiou_loss_mean = loss_iou.mean().clamp(min=eps).item()
 
-            # Outlier degree: β = (L_i / mean(L))^δ
-            # The δ exponent widens the distribution, separating easy/hard/extreme more clearly
+            # Outlier degree: β = L_i / mean(L)（线性，与官方一致；不再 .pow(δ)）
             delta = 3.0
-            ratio = loss_iou / (self._wiou_loss_mean + eps)
-            beta = ratio.pow(delta)
+            alpha = 1.9  # 论文经验最优（原误设为 delta=3.0）
+            beta = loss_iou / (self._wiou_loss_mean + eps)
 
             # Dynamic non-monotonic focusing coefficient
-            # r = β / (δ * α^(β - δ)), with α = δ for natural normalization
-            # At β = δ: r = 1; peak at β ≈ 1/ln(δ)
-            alpha = delta
+            # r = β / (δ * α^(β - δ))
+            # At β = δ: r = 1；峰值在 β ≈ 1/ln(α)；β >> δ 时 r 缓慢下降但不归零
             r = beta / (delta * torch.pow(alpha, beta - delta))
             r = r.clamp(0.0, 4.0)  # prevent extreme values
 
