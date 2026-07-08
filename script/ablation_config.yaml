@@ -10,6 +10,14 @@
 #
 # 输出根说明：run_ablation.py 自动创建 runs/outputs/fair_<YYYYMMDD_HHMMSS>/，
 # 无需在此配置 output_root（已删除该字段）。
+#
+# 【code_version】（2026-07-07 新增）：
+#   指纹机制只 hash 配方字段，无法感知 loss.py/metrics.py 等代码改动。
+#   当修改了 WIoU/注意力/BiFPN 等核心代码后，必须 bump 此版本号，
+#   否则断点续跑会因指纹不变而复用旧 best.pt（fair_20260707_190551 事件的教训）。
+#   - v1: 初始版本（含 WIoU v3 聚焦 bug）
+#   - v2: 2026-07-07 修复 _wiouv3_focusing（β 去 .pow(delta)、α 3.0→1.9）
+code_version: v2
 
 # ===== 公平对比的统一变量（所有模型共享）=====
 shared:

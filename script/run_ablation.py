@@ -320,6 +320,10 @@ def _recipe_fingerprint(recipe: dict, model_key: str) -> str:
         # stage 级 override（嵌套结构，整体入指纹；无 override 时为空 dict，不影响无 override 的模型）
         "stage2_override": dict(sorted(stage2_override.items())),
         "stage1_override": dict(sorted(stage1_override.items())),
+        # code_version：loss.py/metrics.py 等代码变更的手动版本标记。
+        # 指纹只 hash 配方字段，无法感知代码改动；改了 WIoU/注意力等核心代码后，
+        # 必须在 ablation_config.yaml 顶部 bump code_version，否则断点续跑会复用旧 best.pt。
+        "code_version": recipe.get("code_version", "v1"),
     }
     # sort_keys 保证字段顺序变化不影响 hash
     s = json.dumps(key_fields, sort_keys=True, default=str)
@@ -412,6 +416,18 @@ def run_one_experiment(model_key: str, scale: str, recipe: dict,
         s1 = Path(str(final).replace("_stage2", "_stage1")) if "_stage2" in final.name else None
         print(f"✓ done, skip {scale}/{model_key}")
         return {"stage1": s1, "stage2": final}
+
+    # force=True 时清理旧 stage1/stage2 目录，避免 exist_ok 产生带后缀的新目录
+    # （ultralytics exist_ok=True 遇到已存在目录会加序号，如 _stage22，导致结果散落）
+    # 不清理会引发：旧 best.pt 残留 + 新 results.csv 落到 _stage22，整理脚本找不到
+    if force:
+        import shutil
+        final_dir = _stage2_run_dir(model_key, scale, recipe)
+        s1_dir = Path(str(final_dir).replace("_stage2", "_stage1"))
+        for d in [final_dir, s1_dir]:
+            if d.exists():
+                shutil.rmtree(d)
+                print(f"  --force: 清理旧目录 {d}")
 
     # 公平注入
     model_cfg = build_model_cfg_with_fairness(model_key, recipe)
