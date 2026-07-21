@@ -137,7 +137,7 @@ class BboxLoss(nn.Module):
         Returns:
             (torch.Tensor): Focusing coefficient r for each sample.
 
-        Note:
+        Notes:
             2026-07-07 bug 修复（对照官方 github.com/Instinct323/Wise-IoU 的 _scaled_loss）：
               1. β 公式：原 `(L/mean)^δ`（δ 次幂）→ 改为 `L/mean`（线性，与官方一致）。
                  旧版多余 .pow(δ) 让 β 在 L>mean 时指数爆炸（L=2*mean 时 β=2^3=8 而非 2），
@@ -168,9 +168,9 @@ class BboxLoss(nn.Module):
 
             # Update running mean with exponential moving average
             momentum = 0.9
-            self._wiou_loss_mean = (
-                (1 - momentum) * self._wiou_loss_mean + momentum * loss_iou.mean().clamp(min=eps).item()
-            )
+            self._wiou_loss_mean = (1 - momentum) * self._wiou_loss_mean + momentum * loss_iou.mean().clamp(
+                min=eps
+            ).item()
 
         return r
 
