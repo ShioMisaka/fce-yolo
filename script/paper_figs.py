@@ -45,6 +45,7 @@ import pandas as pd  # noqa: E402
 import yaml  # noqa: E402
 
 from script.analysis import load_results  # noqa: E402
+
 # 注意：不要 import extract_metrics —— 它对 mAP50-95 与 mAP50 分别取各自的
 # idxmax（两条不同的 best 行），违反「best 行 P/R/mAP50/mAP50-95 同行」口径
 # （AGENTS.md §7/§8）。本脚本统一用 _best_metrics（同一行取值）。
@@ -57,12 +58,12 @@ PAPER_ROOT = PROJECT_ROOT.parent
 # 配置加载
 # ============================================================
 
-def _resolve_path(rel_path: str) -> Path:
-    """把 YAML 里的相对路径解析成绝对路径，双根兼容。
 
-    优先在 PROJECT_ROOT（fce-yolo 仓库根）下找；找不到再回退 PAPER_ROOT
-    （项目根）。这样既能读 runs/outputs（新工作流，工作站产物在仓库内），
-    又能兼容旧 paper_figs_config.yaml 里的中文 `实验/论文正式实验/...` 路径。
+def _resolve_path(rel_path: str) -> Path:
+    """把 YAML 里的相对路径解析成绝对路径，双根兼容。.
+
+    优先在 PROJECT_ROOT（fce-yolo 仓库根）下找；找不到再回退 PAPER_ROOT （项目根）。这样既能读 runs/outputs（新工作流，工作站产物在仓库内）， 又能兼容旧
+    paper_figs_config.yaml 里的中文 `实验/论文正式实验/...` 路径。
     """
     p_project = (PROJECT_ROOT / rel_path).resolve()
     if p_project.exists():
@@ -72,10 +73,9 @@ def _resolve_path(rel_path: str) -> Path:
 
 
 def _detect_root(rel_path: str, reference_abs: Path, reference_rel: str) -> Path:
-    """从已解析的同级路径推断 rel_path 应所在的根。
+    """从已解析的同级路径推断 rel_path 应所在的根。.
 
-    reference_abs 已正确解析（如某实验的 abs_dir），reference_rel 是它在 YAML 里的
-    相对路径。两者共享前缀，故 reference_abs 去掉 reference_rel 各级后即得"根"，
+    reference_abs 已正确解析（如某实验的 abs_dir），reference_rel 是它在 YAML 里的 相对路径。两者共享前缀，故 reference_abs 去掉 reference_rel 各级后即得"根"，
     再拼 rel_path 得到目标绝对路径。用于 out_dir 这类尚不存在、无法靠 exists 判根的路径。
     """
     root = reference_abs
@@ -85,10 +85,9 @@ def _detect_root(rel_path: str, reference_abs: Path, reference_rel: str) -> Path
 
 
 def load_config(config_path):
-    """加载 YAML 配置，返回 (experiments, settings)。
+    """加载 YAML 配置，返回 (experiments, settings)。.
 
-    experiments: 按 order 排序的实验列表，每项含 key/dir/display/color 等
-    settings: 全局设置 dict
+    experiments: 按 order 排序的实验列表，每项含 key/dir/display/color 等 settings: 全局设置 dict
     """
     with open(config_path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
@@ -107,16 +106,14 @@ def load_config(config_path):
     # out_dir 与实验 dir 共享前缀（同一 out_prefix），数据在哪根下，图表就写哪根下。
     # out_dir 尚不存在，无法靠 exists 判根，故从首个已解析的实验路径推断根。
     if exp_list:
-        settings["abs_out_dir"] = _detect_root(
-            settings["out_dir"], exp_list[0]["abs_dir"], exp_list[0]["dir"]
-        )
+        settings["abs_out_dir"] = _detect_root(settings["out_dir"], exp_list[0]["abs_dir"], exp_list[0]["dir"])
     else:
         settings["abs_out_dir"] = (PROJECT_ROOT / settings["out_dir"]).resolve()
     return exp_list, settings
 
 
 def load_all_dfs(exp_list):
-    """批量加载所有实验的 results.csv，返回 {key: DataFrame}。"""
+    """批量加载所有实验的 results.csv，返回 {key: DataFrame}。."""
     dfs = {}
     for e in exp_list:
         csv = e["abs_dir"] / "results.csv"
@@ -131,15 +128,16 @@ def load_all_dfs(exp_list):
 # Font configuration (cross-platform, English-only output)
 # ============================================================
 
+
 def setup_cn_font(dpi=300):
     """Configure matplotlib fonts for cross-platform rendering.
 
-    In-figure text is English-only now, so any sans-serif font works. We still
-    prefer CJK-capable fonts when present (harmless), but DejaVu Sans (matplotlib
-    default on Linux) is the guaranteed fallback. This lets the script run on a
+    In-figure text is English-only now, so any sans-serif font works. We still prefer CJK-capable fonts when present
+    (harmless), but DejaVu Sans (matplotlib default on Linux) is the guaranteed fallback. This lets the script run on a
     Linux workstation without any CJK font installed.
     """
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib import font_manager
@@ -147,26 +145,34 @@ def setup_cn_font(dpi=300):
     # Order: prefer CJK-capable (in case of mixed content), fall back to DejaVu
     # (ships with matplotlib on every platform).
     candidates = [
-        "Microsoft YaHei", "SimHei", "Microsoft YaHei UI", "SimSun",  # Windows
-        "Noto Sans CJK SC", "Noto Sans CJK", "WenQuanYi Zen Hei",     # Linux
-        "PingFang SC", "Heiti SC",                                     # macOS
-        "DejaVu Sans",                                                 # universal fallback
+        "Microsoft YaHei",
+        "SimHei",
+        "Microsoft YaHei UI",
+        "SimSun",  # Windows
+        "Noto Sans CJK SC",
+        "Noto Sans CJK",
+        "WenQuanYi Zen Hei",  # Linux
+        "PingFang SC",
+        "Heiti SC",  # macOS
+        "DejaVu Sans",  # universal fallback
     ]
     available = {f.name for f in font_manager.fontManager.ttflist}
     chosen = next((c for c in candidates if c in available), "DejaVu Sans")
 
-    plt.rcParams.update({
-        "font.sans-serif": [chosen] + candidates,
-        "font.family": "sans-serif",
-        "axes.unicode_minus": False,
-        "font.size": 11,
-        "axes.linewidth": 1.0,
-        "axes.grid": True,
-        "grid.alpha": 0.25,
-        "lines.linewidth": 2,
-        "figure.dpi": 150,
-        "savefig.dpi": dpi,
-    })
+    plt.rcParams.update(
+        {
+            "font.sans-serif": [chosen, *candidates],
+            "font.family": "sans-serif",
+            "axes.unicode_minus": False,
+            "font.size": 11,
+            "axes.linewidth": 1.0,
+            "axes.grid": True,
+            "grid.alpha": 0.25,
+            "lines.linewidth": 2,
+            "figure.dpi": 150,
+            "savefig.dpi": dpi,
+        }
+    )
     print(f"font: {chosen}")
     return plt
 
@@ -174,6 +180,7 @@ def setup_cn_font(dpi=300):
 # ============================================================
 # 通用：按 order 排序的实验元数据访问
 # ============================================================
+
 
 def _ordered(dfs, exp_list):
     """Return items from dfs in exp_list order as (key, df, meta)."""
@@ -188,11 +195,12 @@ def _ordered(dfs, exp_list):
 # Cross-platform PIL font resolution
 # ============================================================
 
+
 def _load_pil_font(size=28, bold=False):
     """Find a usable TrueType font for PIL across Windows/Linux/macOS.
 
-    In-figure text is English-only, so any TTF works. We probe common per-OS
-    font paths and fall back to PIL's default bitmap font (always available).
+    In-figure text is English-only, so any TTF works. We probe common per-OS font paths and fall back to PIL's default
+    bitmap font (always available).
     """
     from PIL import ImageFont
 
@@ -212,8 +220,12 @@ def _load_pil_font(size=28, bold=False):
 
     if sys.platform.startswith("win"):
         base = Path("C:/Windows/Fonts")
-        prefer = (win_bold if bold else []) + (win_reg if not bold else []) + \
-                 (win_reg if bold else []) + (win_bold if not bold else [])
+        prefer = (
+            (win_bold if bold else [])
+            + (win_reg if not bold else [])
+            + (win_reg if bold else [])
+            + (win_bold if not bold else [])
+        )
         candidates = [str(base / f) for f in prefer]
     elif sys.platform == "darwin":
         candidates = (mac_bold + mac_reg) if bold else (mac_reg + mac_bold)
@@ -233,6 +245,7 @@ def _load_pil_font(size=28, bold=False):
 # Output A: training curves (metrics 4-panel + loss 4-panel)
 # ============================================================
 
+
 def _plot_4panels(dfs, exp_list, col_config, save_path, fig_title, settings):
     """Generic 2x2 comparison plotter.
 
@@ -247,9 +260,12 @@ def _plot_4panels(dfs, exp_list, col_config, save_path, fig_title, settings):
             if col not in df.columns:
                 continue
             ax.plot(
-                df["epoch"], df[col],
-                color=meta["color"], linestyle=meta["linestyle"],
-                label=meta["display"], linewidth=2,
+                df["epoch"],
+                df[col],
+                color=meta["color"],
+                linestyle=meta["linestyle"],
+                label=meta["display"],
+                linewidth=2,
             )
         ax.set_title(subtitle, fontsize=13, fontweight="bold")
         ax.set_xlabel("Epoch")
@@ -277,7 +293,9 @@ def produce_A(dfs, exp_list, settings):
         ("metrics/recall(B)", "Recall Comparison", "Recall"),
     ]
     _plot_4panels(
-        dfs, exp_list, metric_cfg,
+        dfs,
+        exp_list,
+        metric_cfg,
         out / "A1_metrics_4panel.png",
         "Training Metrics Comparison (FCE-YOLOv11 Ablation, scale-m)",
         settings,
@@ -290,7 +308,9 @@ def produce_A(dfs, exp_list, settings):
         ("val/box_loss", "Val Box Loss", "Box Loss"),
     ]
     _plot_4panels(
-        dfs, exp_list, loss_cfg,
+        dfs,
+        exp_list,
+        loss_cfg,
         out / "A2_loss_4panel.png",
         "Training/Validation Loss Comparison (FCE-YOLOv11 Ablation, scale-m)",
         settings,
@@ -301,8 +321,9 @@ def produce_A(dfs, exp_list, settings):
 # 产出 B：消融分析（柱状图 + 雷达图 + 收敛速度 + 表格）
 # ============================================================
 
+
 def _best_metrics(df):
-    """提取 best 轮（mAP50-95 最高）的 4 个指标，返回 dict（0~1 原值）。"""
+    """提取 best 轮（mAP50-95 最高）的 4 个指标，返回 dict（0~1 原值）。."""
     col = "metrics/mAP50-95(B)"
     if col not in df.columns:
         return None
@@ -332,22 +353,28 @@ def produce_B1(dfs, exp_list, settings):
         vals.append(m["mAP50_95"] * 100)
         colors.append(meta["color"])
 
-    fig, ax = plt.subplots(figsize=(10, 6.5), tight_layout=True)
+    _fig, ax = plt.subplots(figsize=(10, 6.5), tight_layout=True)
     x = np.arange(len(vals))
     bars = ax.bar(x, vals, color=colors, edgecolor="black", linewidth=0.8, width=0.55)
 
     # absolute value on top of each bar
     for b, v in zip(bars, vals):
-        ax.text(b.get_x() + b.get_width() / 2, v + 0.3, f"{v:.2f}",
-                ha="center", va="bottom", fontsize=12, fontweight="bold")
+        ax.text(
+            b.get_x() + b.get_width() / 2, v + 0.3, f"{v:.2f}", ha="center", va="bottom", fontsize=12, fontweight="bold"
+        )
     # delta between adjacent bars
     for i in range(1, len(vals)):
         delta = vals[i] - vals[i - 1]
         midx = (x[i - 1] + x[i]) / 2
         y = max(vals[i - 1], vals[i]) + 2.2
         ax.annotate(
-            f"+{delta:.2f}", xy=(midx, y), ha="center", va="bottom",
-            fontsize=11, fontweight="bold", color="#C62828",
+            f"+{delta:.2f}",
+            xy=(midx, y),
+            ha="center",
+            va="bottom",
+            fontsize=11,
+            fontweight="bold",
+            color="#C62828",
             arrowprops=dict(arrowstyle="->", color="#C62828", lw=1.2),
             xytext=(midx, y + 1.0),
         )
@@ -355,8 +382,7 @@ def produce_B1(dfs, exp_list, settings):
     ax.set_xticks(x)
     ax.set_xticklabels(names, fontsize=11)
     ax.set_ylabel("mAP@[50-95] (%)", fontsize=12)
-    ax.set_title("Ablation: Progressive Improvement on mAP@[50-95]",
-                 fontsize=14, fontweight="bold")
+    ax.set_title("Ablation: Progressive Improvement on mAP@[50-95]", fontsize=14, fontweight="bold")
     ymin = min(vals) - 5
     ax.set_ylim(ymin, max(vals) + 6)
     ax.grid(True, axis="y", alpha=0.3)
@@ -379,7 +405,7 @@ def produce_B2(dfs, exp_list, settings):
     angles = np.linspace(0, 2 * np.pi, len(dims), endpoint=False).tolist()
     angles += angles[:1]  # close the polygon
 
-    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True), tight_layout=True)
+    _fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True), tight_layout=True)
     items = _ordered(dfs, exp_list)
     for key, df, meta in items:
         m = _best_metrics(df)
@@ -387,8 +413,7 @@ def produce_B2(dfs, exp_list, settings):
             continue
         vals = [m[k] * 100 for k in keys]
         vals += vals[:1]
-        ax.plot(angles, vals, color=meta["color"], linestyle=meta["linestyle"],
-                linewidth=2.2, label=meta["display"])
+        ax.plot(angles, vals, color=meta["color"], linestyle=meta["linestyle"], linewidth=2.2, label=meta["display"])
         ax.fill(angles, vals, color=meta["color"], alpha=0.10)
 
     ax.set_xticks(angles[:-1])
@@ -396,8 +421,7 @@ def produce_B2(dfs, exp_list, settings):
     ax.set_ylim(70, 100)
     ax.set_yticks([75, 80, 85, 90, 95, 100])
     ax.set_yticklabels(["75", "80", "85", "90", "95", "100"], fontsize=9, color="gray")
-    ax.set_title("Performance Radar (best metrics, 4-model comparison)",
-                 fontsize=14, fontweight="bold", pad=22)
+    ax.set_title("Performance Radar (best metrics, 4-model comparison)", fontsize=14, fontweight="bold", pad=22)
     ax.legend(loc="upper right", bbox_to_anchor=(1.28, 1.12), framealpha=0.9)
     ax.grid(True, alpha=0.4)
     out = settings["abs_out_dir"] / "B_ablation"
@@ -436,23 +460,27 @@ def produce_B3(dfs, exp_list, settings):
         print("  warn: no usable data, skipping B3")
         return
 
-    fig, ax = plt.subplots(figsize=(10, 5.5), tight_layout=True)
+    _fig, ax = plt.subplots(figsize=(10, 5.5), tight_layout=True)
     y = np.arange(len(epochs))
     bars = ax.barh(y, epochs, color=colors, edgecolor="black", linewidth=0.8, height=0.55)
     for b, ep in zip(bars, epochs):
-        ax.text(ep + 2, b.get_y() + b.get_height() / 2, f"{ep} ep",
-                va="center", fontsize=11, fontweight="bold")
+        ax.text(ep + 2, b.get_y() + b.get_height() / 2, f"{ep} ep", va="center", fontsize=11, fontweight="bold")
 
     # speedup of fastest vs slowest
     if len(epochs) >= 2:
         fastest, slowest = min(epochs), max(epochs)
         speedup = (1 - fastest / slowest) * 100
-        ax.text(0.98, 0.04,
-                f"Fastest is {speedup:.0f}% quicker than slowest\n"
-                f"(threshold mAP@[50-95]={thr})",
-                transform=ax.transAxes, ha="right", va="bottom",
-                fontsize=10, color="#C62828",
-                bbox=dict(boxstyle="round,pad=0.4", fc="#FFF3E0", ec="#FF6B00"))
+        ax.text(
+            0.98,
+            0.04,
+            f"Fastest is {speedup:.0f}% quicker than slowest\n(threshold mAP@[50-95]={thr})",
+            transform=ax.transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=10,
+            color="#C62828",
+            bbox=dict(boxstyle="round,pad=0.4", fc="#FFF3E0", ec="#FF6B00"),
+        )
 
     ax.set_yticks(y)
     ax.set_yticklabels(names, fontsize=11)
@@ -469,12 +497,15 @@ def produce_B3(dfs, exp_list, settings):
 
 
 def _compute_model_complexity(weights_path, imgsz=1280):
-    """计算 Params 与 GFLOPs（CPU 可跑）。失败返回 (None, None)。"""
+    """计算 Params 与 GFLOPs（CPU 可跑）。失败返回 (None, None)。."""
     import contextlib
     import io
+
     import torch
+
     from ultralytics import YOLO
     from ultralytics.utils.torch_utils import get_flops
+
     torch.set_num_threads(4)
 
     m = YOLO(str(weights_path))
@@ -509,20 +540,22 @@ def produce_B_table(dfs, exp_list, settings):
         else:
             print(f"  warn: best.pt missing: {weights}")
 
-        rows.append({
-            "No": f"M{meta['order']}" if meta["order"] <= 4 else str(meta["order"]),
-            "Model": meta["display"],
-            "FCE_Module": meta["fce_module"],
-            "Loss": meta["loss"],
-            "Best_Epoch": m["epoch"],
-            "Precision": round(m["precision"] * 100, 2),
-            "Recall": round(m["recall"] * 100, 2),
-            "mAP50": round(m["mAP50"] * 100, 2),
-            "mAP50-95": cur,
-            "d_mAP50-95": delta,
-            "Params(M)": round(params_m, 2) if params_m else "N/A",
-            "GFLOPs": round(gflops, 1) if gflops else "N/A",
-        })
+        rows.append(
+            {
+                "No": f"M{meta['order']}" if meta["order"] <= 4 else str(meta["order"]),
+                "Model": meta["display"],
+                "FCE_Module": meta["fce_module"],
+                "Loss": meta["loss"],
+                "Best_Epoch": m["epoch"],
+                "Precision": round(m["precision"] * 100, 2),
+                "Recall": round(m["recall"] * 100, 2),
+                "mAP50": round(m["mAP50"] * 100, 2),
+                "mAP50-95": cur,
+                "d_mAP50-95": delta,
+                "Params(M)": round(params_m, 2) if params_m else "N/A",
+                "GFLOPs": round(gflops, 1) if gflops else "N/A",
+            }
+        )
 
     df_out = pd.DataFrame(rows)
     out = settings["abs_out_dir"] / "B_ablation"
@@ -533,9 +566,11 @@ def produce_B_table(dfs, exp_list, settings):
     print(f"saved: {csv_path}")
 
     # Markdown table
-    md = ["# Table 4-1 Ablation Results (scale-m, imgsz=1280, best metrics)\n",
-          "> best metrics = the epoch with the highest val mAP50-95 (standard YOLO reporting)\n",
-          "> Training: AdamW, lr0=0.001, batch=32, cosine annealing, 300 epochs, two-stage\n"]
+    md = [
+        "# Table 4-1 Ablation Results (scale-m, imgsz=1280, best metrics)\n",
+        "> best metrics = the epoch with the highest val mAP50-95 (standard YOLO reporting)\n",
+        "> Training: AdamW, lr0=0.001, batch=32, cosine annealing, 300 epochs, two-stage\n",
+    ]
     cols = list(df_out.columns)
     md.append("| " + " | ".join(cols) + " |")
     md.append("| " + " | ".join(["---"] * len(cols)) + " |")
@@ -562,6 +597,7 @@ def produce_B(dfs, exp_list, settings):
 # Output C: detection visualization (val_batch0 GT + 4-model preds)
 # ============================================================
 
+
 def produce_C(dfs, exp_list, settings):
     """C: stacked val_batch0 prediction comparison."""
     print("\n" + "=" * 60)
@@ -569,11 +605,9 @@ def produce_C(dfs, exp_list, settings):
     print("=" * 60)
     from PIL import Image, ImageDraw
 
-    panels = [("Ground Truth (val_batch0_labels)",
-               exp_list[0]["abs_dir"] / "val_batch0_labels.jpg")]
+    panels = [("Ground Truth (val_batch0_labels)", exp_list[0]["abs_dir"] / "val_batch0_labels.jpg")]
     for key, df, meta in _ordered(dfs, exp_list):
-        panels.append((f"{meta['display']} (val_batch0_pred)",
-                       meta["abs_dir"] / "val_batch0_pred.jpg"))
+        panels.append((f"{meta['display']} (val_batch0_pred)", meta["abs_dir"] / "val_batch0_pred.jpg"))
 
     for title, p in panels:
         if not p.exists():
@@ -607,9 +641,11 @@ def produce_C(dfs, exp_list, settings):
 # 产出 D：PR/F1/混淆矩阵 中文化拼接
 # ============================================================
 
+
 def _hstack_with_titles(panels, out_path, fig_title, settings, subtitle_h=60):
     """Horizontally stack images with English subtitles + a main title."""
     from PIL import Image, ImageDraw
+
     for _, p in panels:
         if not p.exists():
             print(f"warn: missing image: {p}")
@@ -653,13 +689,15 @@ def produce_D(dfs, exp_list, settings):
     _hstack_with_titles(
         [(m["display"], m["abs_dir"] / "BoxPR_curve.png") for _, _, m in items],
         out / "D1_PR_4model_compare.png",
-        "PR Curve Comparison (4 models, scale-m)", settings,
+        "PR Curve Comparison (4 models, scale-m)",
+        settings,
     )
     # D2 F1
     _hstack_with_titles(
         [(m["display"], m["abs_dir"] / "BoxF1_curve.png") for _, _, m in items],
         out / "D2_F1_4model_compare.png",
-        "F1 Curve Comparison (4 models, scale-m)", settings,
+        "F1 Curve Comparison (4 models, scale-m)",
+        settings,
     )
     # D3 confusion matrix (full FCE = highest order)
     last = items[-1][2]
@@ -667,10 +705,10 @@ def produce_D(dfs, exp_list, settings):
     cls_note = ", ".join(f"{i}={n}" for i, n in enumerate(cn)) if cn else ""
     note_suffix = f" [{cls_note}]" if cls_note else ""
     _hstack_with_titles(
-        [(f"{last['display']} (Normalized Confusion Matrix)",
-          last["abs_dir"] / "confusion_matrix_normalized.png")],
+        [(f"{last['display']} (Normalized Confusion Matrix)", last["abs_dir"] / "confusion_matrix_normalized.png")],
         out / "D3_FCE_confusion_matrix.png",
-        f"{last['display']} Normalized Confusion Matrix{note_suffix}", settings,
+        f"{last['display']} Normalized Confusion Matrix{note_suffix}",
+        settings,
     )
 
 
@@ -678,14 +716,18 @@ def produce_D(dfs, exp_list, settings):
 # 主入口
 # ============================================================
 
+
 def main():
     parser = argparse.ArgumentParser(description="Paper figure generator (FCE-YOLOv11 ablation)")
     parser.add_argument(
-        "--config", default=str(Path(__file__).parent / "paper_figs_config.yaml"),
+        "--config",
+        default=str(Path(__file__).parent / "paper_figs_config.yaml"),
         help="YAML config file path",
     )
     parser.add_argument(
-        "--only", default="", type=str,
+        "--only",
+        default="",
+        type=str,
         help="Produce only the given categories (comma-separated, e.g. A,B,C,D); default all",
     )
     args = parser.parse_args()
@@ -707,8 +749,7 @@ def main():
         print("error: no usable data, exiting")
         sys.exit(1)
 
-    targets = {t.strip().upper() for t in args.only.split(",") if t.strip()} or \
-              {"A", "B", "C", "D"}
+    targets = {t.strip().upper() for t in args.only.split(",") if t.strip()} or {"A", "B", "C", "D"}
 
     if "A" in targets:
         produce_A(dfs, exp_list, settings)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-公平消融实验编排器（Fair Ablation Orchestrator）
+公平消融实验编排器（Fair Ablation Orchestrator）.
 
 按 ablation_config.yaml 配方一键训练 4 类模型 × 多尺度，强制全部两阶段
 （含 baseline，公平对齐），产出受控对比表与论文图表。
@@ -22,6 +22,8 @@
     python script/run_ablation.py --skip-train               # 仅整理+出图
 """
 
+from __future__ import annotations
+
 import argparse
 import sys
 from dataclasses import replace
@@ -33,6 +35,8 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+
+from script.analysis import extract_metrics, load_results  # noqa: E402
 from script.config import (  # noqa: E402
     MODEL_CONFIGS,
     ModelConfig,
@@ -40,7 +44,6 @@ from script.config import (  # noqa: E402
     TrainConfig,
     get_model_config,
 )
-from script.analysis import load_results, extract_metrics  # noqa: E402
 from script.trainer import YOLOv11Trainer  # noqa: E402
 
 DEFAULT_RECIPE = PROJECT_ROOT / "script" / "ablation_config.yaml"
@@ -50,13 +53,13 @@ DEFAULT_RECIPE = PROJECT_ROOT / "script" / "ablation_config.yaml"
 WORK_BASE_ROOT = PROJECT_ROOT / "runs" / "outputs"
 
 
-def make_run_dir(base: Path = None) -> Path:
-    """创建 runs/outputs/fair_<YYYYMMDD_HHMMSS>/ 并返回。
+def make_run_dir(base: Path | None = None) -> Path:
+    """创建 runs/outputs/fair_<YYYYMMDD_HHMMSS>/ 并返回。.
 
-    每次完整运行（训练/整理）创建一个独立时间戳文件夹，收纳全部产物，
-    避免不同次实验互相覆盖。--replot 模式不调用此函数，直接复用已有文件夹。
+    每次完整运行（训练/整理）创建一个独立时间戳文件夹，收纳全部产物， 避免不同次实验互相覆盖。--replot 模式不调用此函数，直接复用已有文件夹。
     """
     from datetime import datetime
+
     if base is None:
         base = WORK_BASE_ROOT
     ts = datetime.now().strftime("fair_%Y%m%d_%H%M%S")
@@ -66,7 +69,7 @@ def make_run_dir(base: Path = None) -> Path:
 
 
 def _rel(p: Path) -> Path:
-    """返回相对 PROJECT_ROOT 的路径（用于打印）。无法相对时原样返回。"""
+    """返回相对 PROJECT_ROOT 的路径（用于打印）。无法相对时原样返回。."""
     try:
         return p.relative_to(PROJECT_ROOT)
     except ValueError:
@@ -74,7 +77,7 @@ def _rel(p: Path) -> Path:
 
 
 def _rel_posix(p: Path) -> str:
-    """同 _rel 但返回 posix 风格字符串（正斜杠），用于写入 YAML 避免分隔符混乱。"""
+    """同 _rel 但返回 posix 风格字符串（正斜杠），用于写入 YAML 避免分隔符混乱。."""
     return _rel(p).as_posix()
 
 
@@ -82,11 +85,13 @@ def _rel_posix(p: Path) -> str:
 # 配方加载
 # ============================================================
 
+
 def load_recipe(yaml_path: Path) -> dict:
-    """加载配方 YAML 并做基本校验。
+    """加载配方 YAML 并做基本校验。.
 
     Returns:
         配方 dict
+
     Raises:
         FileNotFoundError / ValueError
     """
@@ -119,21 +124,19 @@ def load_recipe(yaml_path: Path) -> dict:
 # 公平性注入
 # ============================================================
 
+
 def build_model_cfg_with_fairness(model_key: str, recipe: dict) -> ModelConfig:
-    """给任意 model 注入统一的训练配置（单阶段或两阶段，由配方决定）。
+    """给任意 model 注入统一的训练配置（单阶段或两阶段，由配方决定）。.
 
     单阶段 vs 两阶段判定：只看 stage1.epochs 是否为 0（与 freeze 解耦）。
-      - stage1.epochs == 0：单阶段（stage1=None），所有模型走单阶段分支。
-      - stage1.epochs > 0：两阶段，统一 stage1 + stage2 + freeze。
-    freeze 独立配置：freeze=0 表示两阶段 stage1 也不冻结（让新增模块与 backbone
-      一起预热，避免旧版 freeze=10 冻住注意力层5/8 的问题）。freeze 不再决定阶段数。
+    - stage1.epochs == 0：单阶段（stage1=None），所有模型走单阶段分支。
+    - stage1.epochs > 0：两阶段，统一 stage1 + stage2 + freeze。
+    freeze 独立配置：freeze=0 表示两阶段 stage1 也不冻结（让新增模块与 backbone 一起预热，避免旧版 freeze=10 冻住注意力层5/8 的问题）。freeze 不再决定阶段数。
 
     不改 config.py 全局 MODEL_CONFIGS，返回新对象。
 
-    per_model freeze_override（2026-07-07 新增）：
-      recipe 的 per_model.<model_key>.freeze_override 可覆盖全局 freeze，
-      仅作用于 stage1。用于给特定模型（如 fce/+注意力）更深的冻结策略，
-      逼 stage1 梯度集中到该模型的新增模块。stage2 仍全模型微调。
+    per_model freeze_override（2026-07-07 新增）： recipe 的 per_model.<model_key>.freeze_override 可覆盖全局 freeze， 仅作用于
+    stage1。用于给特定模型（如 fce/+注意力）更深的冻结策略， 逼 stage1 梯度集中到该模型的新增模块。stage2 仍全模型微调。
     """
     base_cfg = get_model_config(model_key)
     freeze = recipe["freeze"]
@@ -152,18 +155,17 @@ def build_model_cfg_with_fairness(model_key: str, recipe: dict) -> ModelConfig:
 
 
 def build_train_config(recipe: dict, model_key: str) -> TrainConfig:
-    """从配方构建 TrainConfig（含 stage1/stage2），并按 iou_override 设置 iou_type。
+    """从配方构建 TrainConfig（含 stage1/stage2），并按 iou_override 设置 iou_type。.
 
     - shared 中 TrainConfig 认识的字段直接填入；不认识的（seed/deterministic/degrees
-      等共享超参）通过 extra_args 注入，由 to_dict() 展开到 train() kwargs。
+    等共享超参）通过 extra_args 注入，由 to_dict() 展开到 train() kwargs。
     - stage1/stage2 必须写入 TrainConfig：trainer._build_train_args 从 self.config.stage1/stage2
-      取阶段配置（而非从 model_cfg），所以这里不注入会导致 asdict(None) 崩溃。
+    取阶段配置（而非从 model_cfg），所以这里不注入会导致 asdict(None) 崩溃。
     - per_model override（2026-07-07 新增）：recipe 的 per_model.<model_key> 可覆盖
-      shared 中的任意字段（如 fce_wiou 关 mixup/copy_paste、设 box 权重）。
-      per_model 优先级高于 shared；freeze_override 不在此处理（见 build_model_cfg_with_fairness）。
+    shared 中的任意字段（如 fce_wiou 关 mixup/copy_paste、设 box 权重）。 per_model 优先级高于 shared；freeze_override 不在此处理（见
+    build_model_cfg_with_fairness）。
     - per_model.stage2_override（2026-07-07 新增）：嵌套 dict，覆盖 stage2 的 StageConfig
-      字段（如 patience/cos_lr/close_mosaic）。用于给特定模型放宽早停等阶段级差异。
-      per_model.stage1_override 同理（暂未使用，对称设计）。
+    字段（如 patience/cos_lr/close_mosaic）。用于给特定模型放宽早停等阶段级差异。 per_model.stage1_override 同理（暂未使用，对称设计）。
     """
     shared = dict(recipe["shared"])
     per_model = recipe.get("per_model", {}) or {}
@@ -195,7 +197,8 @@ def build_train_config(recipe: dict, model_key: str) -> TrainConfig:
 # 预览
 # ============================================================
 
-def print_matrix_preview(recipe: dict, scales: list, models: list, output_root: Path = None):
+
+def print_matrix_preview(recipe: dict, scales: list, models: list, output_root: Path | None = None):
     """Print the experiment matrix + unified-variable summary for review."""
     if output_root is None:
         output_root = WORK_BASE_ROOT
@@ -213,16 +216,24 @@ def print_matrix_preview(recipe: dict, scales: list, models: list, output_root: 
 
     # unified variables
     sh = recipe["shared"]
-    print(f"\nunified variables:")
-    print(f"  imgsz={sh.get('imgsz')}, batch={sh.get('batch')}, optimizer={sh.get('optimizer')}, lr0={recipe['stage2']['lr0']}")
-    print(f"  seed={sh.get('seed')}, deterministic={sh.get('deterministic')}, degrees={sh.get('degrees')}, cache={sh.get('cache')}")
+    print("\nunified variables:")
+    print(
+        f"  imgsz={sh.get('imgsz')}, batch={sh.get('batch')}, optimizer={sh.get('optimizer')}, lr0={recipe['stage2']['lr0']}"
+    )
+    print(
+        f"  seed={sh.get('seed')}, deterministic={sh.get('deterministic')}, degrees={sh.get('degrees')}, cache={sh.get('cache')}"
+    )
     # 训练策略描述：单阶段（stage1.epochs==0）vs 两阶段（与 freeze 解耦）
     s1_ep = recipe["stage1"]["epochs"]
     freeze = recipe["freeze"]
     if s1_ep == 0:
-        print(f"  training: single-stage ({recipe['stage2']['epochs']}ep, lr0={recipe['stage2']['lr0']}, cos_lr={recipe['stage2']['cos_lr']}, close_mosaic={recipe['stage2']['close_mosaic']}, no freeze)")
+        print(
+            f"  training: single-stage ({recipe['stage2']['epochs']}ep, lr0={recipe['stage2']['lr0']}, cos_lr={recipe['stage2']['cos_lr']}, close_mosaic={recipe['stage2']['close_mosaic']}, no freeze)"
+        )
     else:
-        print(f"  training: two-stage stage1({s1_ep}ep, freeze={freeze}, lr0={recipe['stage1'].get('lr0','?')}) + stage2({recipe['stage2']['epochs']}ep, lr0={recipe['stage2']['lr0']}) = {recipe.get('total_epochs', s1_ep+recipe['stage2']['epochs'])}ep")
+        print(
+            f"  training: two-stage stage1({s1_ep}ep, freeze={freeze}, lr0={recipe['stage1'].get('lr0', '?')}) + stage2({recipe['stage2']['epochs']}ep, lr0={recipe['stage2']['lr0']}) = {recipe.get('total_epochs', s1_ep + recipe['stage2']['epochs'])}ep"
+        )
     print(f"  IoU mapping: {recipe.get('iou_override', {})}")
     print(f"  output_root: {output_root}")
     print("\n(--dry-run previews only; drop it to start training)")
@@ -233,14 +244,16 @@ def print_matrix_preview(recipe: dict, scales: list, models: list, output_root: 
 # IoU 校验
 # ============================================================
 
+
 def verify_iou_type(stage2_dir: Path, expected_iou: str) -> bool:
-    """校验训练产物 args.yaml 里记录的 iou_type 与预期一致。
+    """校验训练产物 args.yaml 里记录的 iou_type 与预期一致。.
 
     防止 fce_wiou 漏加 --iou-type WIoU 退化成 CIoU（旧 bug 重现）。
 
     Args:
         stage2_dir: stage2 结果目录
         expected_iou: 预期 IoU 类型字符串（'WIoU'/'CIoU' 等）
+
     Returns:
         True 一致；False 不一致或读不到
     """
@@ -261,8 +274,9 @@ def verify_iou_type(stage2_dir: Path, expected_iou: str) -> bool:
 # 单组实验执行
 # ============================================================
 
+
 def get_model_dir_name(model_key: str, scale: str) -> str:
-    """根据 model_key 返回规范目录名（用于 main_ablation_fair/<scale>/0X_<name>）。"""
+    """根据 model_key 返回规范目录名（用于 main_ablation_fair/<scale>/0X_<name>）。."""
     mapping = {
         "baseline": "01_baseline_yolo11" + scale,
         "bifpn": "02_bifpn_" + scale,
@@ -273,20 +287,18 @@ def get_model_dir_name(model_key: str, scale: str) -> str:
 
 
 def _recipe_fingerprint(recipe: dict, model_key: str) -> str:
-    """计算本次训练的关键配置指纹（8 位 hash）。
+    """计算本次训练的关键配置指纹（8 位 hash）。.
 
-    覆盖所有影响训练结果的配置维度：阶段预算、freeze、lr、种子、增强、IoU 类型。
-    配方任一关键字段变化 → 指纹变化 → 断点续跑视为不匹配 → 强制重训。
-    这能根治"目录名相同但配方已改导致复用旧结果"的隐患（如 2026-07-03 的
-    fce_wiou 残留事件：旧 300ep 单阶段产物被当成新 250ep 两阶段复用）。
+    覆盖所有影响训练结果的配置维度：阶段预算、freeze、lr、种子、增强、IoU 类型。 配方任一关键字段变化 → 指纹变化 → 断点续跑视为不匹配 → 强制重训。 这能根治"目录名相同但配方已改导致复用旧结果"的隐患（如
+    2026-07-03 的 fce_wiou 残留事件：旧 300ep 单阶段产物被当成新 250ep 两阶段复用）。
 
-    2026-07-07 扩白名单：把 shared 的正则化字段（mixup/copy_paste/dropout/weight_decay/
-    warmup_epochs/box）和 per_model override 全部纳入 hash。此前这些字段改了但
-    stage 预算没变时指纹不变，会复用旧结果（潜在隐患）。
-    2026-07-07 再扩：stage2_override（如 per-model patience）单独入指纹，避免
-    改了 patience 但其他字段没变时指纹不变。
+    2026-07-07 扩白名单：把 shared 的正则化字段（mixup/copy_paste/dropout/weight_decay/ warmup_epochs/box）和 per_model override 全部纳入
+    hash。此前这些字段改了但 stage 预算没变时指纹不变，会复用旧结果（潜在隐患）。 2026-07-07 再扩：stage2_override（如 per-model patience）单独入指纹，避免 改了 patience
+    但其他字段没变时指纹不变。
     """
-    import hashlib, json
+    import hashlib
+    import json
+
     iou_override = recipe.get("iou_override", {}) or {}
     shared = recipe.get("shared", {}) or {}
     per_model = recipe.get("per_model", {}) or {}
@@ -331,12 +343,12 @@ def _recipe_fingerprint(recipe: dict, model_key: str) -> str:
 
 
 def write_recipe_fingerprint(stage2_dir: Path, recipe: dict, model_key: str) -> Path:
-    """训练成功后把配置指纹写入 stage2 目录。
+    """训练成功后把配置指纹写入 stage2 目录。.
 
-    后续断点续跑时由 verify_recipe_fingerprint 读取比对，确保目录内容
-    与当前配方一致，避免复用过时产物。
+    后续断点续跑时由 verify_recipe_fingerprint 读取比对，确保目录内容 与当前配方一致，避免复用过时产物。
     """
     import json
+
     fp_file = stage2_dir / "recipe_fingerprint.json"
     payload = {
         "fingerprint": _recipe_fingerprint(recipe, model_key),
@@ -356,19 +368,16 @@ def write_recipe_fingerprint(stage2_dir: Path, recipe: dict, model_key: str) -> 
     return fp_file
 
 
-def is_experiment_complete(scale: str, model_key: str, recipe: dict,
-                           force: bool = False) -> bool:
-    """判断某 (scale, model) 组合是否已完成（断点续跑判定）。
+def is_experiment_complete(scale: str, model_key: str, recipe: dict, force: bool = False) -> bool:
+    """判断某 (scale, model) 组合是否已完成（断点续跑判定）。.
 
     四重校验，任一不满足即视为未完成（重训）：
-      1. force=True 时直接返回 False（--force 强制重训）
-      2. stage2/best.pt + results.csv 存在
-      3. results.csv 行数 >= stage2.epochs * 0.9（容忍早停）
-      4. recipe_fingerprint.json 存在且指纹匹配（配方变 → 重训）
+    1. force=True 时直接返回 False（--force 强制重训）
+    2. stage2/best.pt + results.csv 存在
+    3. results.csv 行数 >= stage2.epochs * 0.9（容忍早停）
+    4. recipe_fingerprint.json 存在且指纹匹配（配方变 → 重训）
 
-    指纹校验（2026-07-03 新增）：根治旧残留污染。历史事件：旧版 300ep 单阶段
-    fce_wiou_m_stage2 残留，被新 250ep 两阶段配方误判为已完成（行数 300>=225 通过），
-    导致复制旧结果没重训。
+    指纹校验（2026-07-03 新增）：根治旧残留污染。历史事件：旧版 300ep 单阶段 fce_wiou_m_stage2 残留，被新 250ep 两阶段配方误判为已完成（行数 300>=225 通过）， 导致复制旧结果没重训。
 
     Args:
         force: --force 时为 True，强制返回 False
@@ -381,6 +390,7 @@ def is_experiment_complete(scale: str, model_key: str, recipe: dict,
     if not (best_pt.exists() and csv.exists()):
         return False
     import pandas as pd
+
     try:
         df = pd.read_csv(csv)
     except Exception:
@@ -394,6 +404,7 @@ def is_experiment_complete(scale: str, model_key: str, recipe: dict,
     if not fp_file.exists():
         return False
     import json
+
     try:
         with open(fp_file, encoding="utf-8") as f:
             actual_fp = json.load(f).get("fingerprint")
@@ -402,12 +413,10 @@ def is_experiment_complete(scale: str, model_key: str, recipe: dict,
     return actual_fp == expected_fp
 
 
-def run_one_experiment(model_key: str, scale: str, recipe: dict,
-                       force: bool = False) -> dict:
-    """训练单组 (scale, model)，返回 {"stage1": Path, "stage2": Path}。
+def run_one_experiment(model_key: str, scale: str, recipe: dict, force: bool = False) -> dict:
+    """训练单组 (scale, model)，返回 {"stage1": Path, "stage2": Path}。.
 
-    断点续跑：若已完成则直接返回路径不重训。
-    force=True 时跳过断点续跑，强制重训（清理残留用）。
+    断点续跑：若已完成则直接返回路径不重训。 force=True 时跳过断点续跑，强制重训（清理残留用）。
     """
     # 断点续跑
     if is_experiment_complete(scale, model_key, recipe, force=force):
@@ -422,6 +431,7 @@ def run_one_experiment(model_key: str, scale: str, recipe: dict,
     # 不清理会引发：旧 best.pt 残留 + 新 results.csv 落到 _stage22，整理脚本找不到
     if force:
         import shutil
+
         final_dir = _stage2_run_dir(model_key, scale, recipe)
         s1_dir = Path(str(final_dir).replace("_stage2", "_stage1"))
         for d in [final_dir, s1_dir]:
@@ -465,13 +475,13 @@ def run_one_experiment(model_key: str, scale: str, recipe: dict,
 # 结果收集与归档
 # ============================================================
 
-def _stage2_run_dir(model_key: str, scale: str, recipe: dict = None) -> Path:
-    """返回 runs/detect 下某 (scale, model) 的最终结果目录路径。
 
-    单阶段（stage1.epochs==0）：目录名即 result_pattern（如 baseline_yolo11m、bifpn_m）。
-    两阶段：trainer 把 result_pattern 的 _stage2 后缀剥离后再加回，stage2 实际目录名
-      为 <base>_stage2（如 bifpn_m_stage2）。详见 trainer._train_two_stage。
-    需要传入 recipe 判定阶段；未传时按 config.py 的 stage1 是否为 None 判定（兼容旧调用）。
+def _stage2_run_dir(model_key: str, scale: str, recipe: dict | None = None) -> Path:
+    """返回 runs/detect 下某 (scale, model) 的最终结果目录路径。.
+
+    单阶段（stage1.epochs==0）：目录名即 result_pattern（如 baseline_yolo11m、bifpn_m）。 两阶段：trainer 把 result_pattern 的 _stage2
+    后缀剥离后再加回，stage2 实际目录名 为 <base>_stage2（如 bifpn_m_stage2）。详见 trainer._train_two_stage。 需要传入 recipe 判定阶段；未传时按 config.py
+    的 stage1 是否为 None 判定（兼容旧调用）。
     """
     base_cfg = get_model_config(model_key)
     base = base_cfg.result_pattern.format(scale=scale)
@@ -485,14 +495,14 @@ def _stage2_run_dir(model_key: str, scale: str, recipe: dict = None) -> Path:
     return Path("runs/detect") / base
 
 
-def archive_one(scale: str, model_key: str, recipe: dict, output_root: Path = None):
-    """把 stage2 结果复制到 output_root/<scale>/0X_<name>/stage2。
+def archive_one(scale: str, model_key: str, recipe: dict, output_root: Path | None = None):
+    """把 stage2 结果复制到 output_root/<scale>/0X_<name>/stage2。.
 
-    源固定从 runs/detect/<result_pattern> 读（ultralytics 原生训练产物）。
-    output_root 为 None 时用 WORK_BASE_ROOT。
-    默认仅复制 stage2（copy_stage1: false）；目录自包含、可独立归档。
+    源固定从 runs/detect/<result_pattern> 读（ultralytics 原生训练产物）。 output_root 为 None 时用 WORK_BASE_ROOT。 默认仅复制
+    stage2（copy_stage1: false）；目录自包含、可独立归档。
     """
     import shutil
+
     if output_root is None:
         output_root = WORK_BASE_ROOT
     scale_dir = output_root / scale
@@ -529,9 +539,8 @@ def archive_one(scale: str, model_key: str, recipe: dict, output_root: Path = No
     return dst_s2
 
 
-def collect_results(scales: list, models: list, recipe: dict,
-                    output_root: Path = None) -> dict:
-    """遍历 (scale, model)，从 runs/detect 复制 stage2 到 output_root，汇总 csv 路径。
+def collect_results(scales: list, models: list, recipe: dict, output_root: Path | None = None) -> dict:
+    """遍历 (scale, model)，从 runs/detect 复制 stage2 到 output_root，汇总 csv 路径。.
 
     Returns:
         {scale: {model_key: {"stage2_dir": Path, "csv": Path, "df": DataFrame, "metrics": dict}}}
@@ -562,10 +571,9 @@ def collect_results(scales: list, models: list, recipe: dict,
 
 
 def load_existing_results(scales: list, models: list, output_root: Path) -> dict:
-    """从 output_root/<scale>/0X_*/stage2 直接加载 csv（--replot 用，不做复制）。
+    """从 output_root/<scale>/0X_*/stage2 直接加载 csv（--replot 用，不做复制）。.
 
-    与 collect_results 的区别：不调 archive_one（不复制 stage2），直接读已整理好的目录。
-    用于 --replot 场景：时间戳文件夹已含完整 stage2 副本，只需重新读 csv 出图。
+    与 collect_results 的区别：不调 archive_one（不复制 stage2），直接读已整理好的目录。 用于 --replot 场景：时间戳文件夹已含完整 stage2 副本，只需重新读 csv 出图。
     """
     all_results = {}
     for scale in scales:
@@ -593,24 +601,26 @@ def load_existing_results(scales: list, models: list, output_root: Path) -> dict
 # 模型展示名 + 消融序号（与 paper_figs_config 对齐）
 # 序号用 M1/M2/M3/M4 而非 ①②③④，避免 Linux 无对应字形时渲染异常
 MODEL_DISPLAY = {
-    "baseline":   ("M1", "YOLOv11 (baseline)", "CIoU"),
-    "bifpn":      ("M2", "+BiFPN",             "CIoU"),
-    "fce":        ("M3", "+BiFPN+Attn",        "CIoU"),
-    "fce_wiou":   ("M4", "FCE (+WIoU)",        "WIoU"),
+    "baseline": ("M1", "YOLOv11 (baseline)", "CIoU"),
+    "bifpn": ("M2", "+BiFPN", "CIoU"),
+    "fce": ("M3", "+BiFPN+Attn", "CIoU"),
+    "fce_wiou": ("M4", "FCE (+WIoU)", "WIoU"),
 }
 
 
 def compute_params_gflops(best_pt: Path, imgsz: int = 1280) -> tuple:
-    """从 best.pt 真实计算 Params/GFLOPs。
+    """从 best.pt 真实计算 Params/GFLOPs。.
 
     失败返回 (None, None)。
     """
     try:
         from ultralytics import YOLO
+
         m = YOLO(str(best_pt))
         params = sum(p.numel() for p in m.model.parameters())
         try:
             from ultralytics.utils.torch_utils import get_flops
+
             flops = get_flops(m.model, imgsz=imgsz)
         except Exception:
             flops = None
@@ -620,9 +630,8 @@ def compute_params_gflops(best_pt: Path, imgsz: int = 1280) -> tuple:
         return None, None
 
 
-def write_comparison_table(scale: str, scale_results: dict, recipe: dict,
-                           output_root: Path = None):
-    """为单尺度生成对比表 CSV + MD（按 best 指标，含 Δ 列）。"""
+def write_comparison_table(scale: str, scale_results: dict, recipe: dict, output_root: Path | None = None):
+    """为单尺度生成对比表 CSV + MD（按 best 指标，含 Δ 列）。."""
     if output_root is None:
         output_root = WORK_BASE_ROOT
     cmp_dir = output_root / "comparison"
@@ -648,24 +657,27 @@ def write_comparison_table(scale: str, scale_results: dict, recipe: dict,
         # （AGENTS.md §7/§8 数据真实性红线）。
         best_idx = r["df"]["metrics/mAP50-95(B)"].idxmax()
         best_row = r["df"].loc[best_idx]
-        rows.append({
-            "No": seq,
-            "Model": disp,
-            "Loss": loss,
-            "Best_Epoch": m["best_map50_95_epoch"],
-            "P": best_row["metrics/precision(B)"],
-            "R": best_row["metrics/recall(B)"],
-            "mAP50": best_row["metrics/mAP50(B)"],
-            "mAP50_95": best_row["metrics/mAP50-95(B)"],
-            "d_mAP50_95": delta,
-            "Params(M)": params,
-            "GFLOPs": gflops,
-            "Total_Ep": recipe["stage1"]["epochs"] + recipe["stage2"]["epochs"],
-        })
+        rows.append(
+            {
+                "No": seq,
+                "Model": disp,
+                "Loss": loss,
+                "Best_Epoch": m["best_map50_95_epoch"],
+                "P": best_row["metrics/precision(B)"],
+                "R": best_row["metrics/recall(B)"],
+                "mAP50": best_row["metrics/mAP50(B)"],
+                "mAP50_95": best_row["metrics/mAP50-95(B)"],
+                "d_mAP50_95": delta,
+                "Params(M)": params,
+                "GFLOPs": gflops,
+                "Total_Ep": recipe["stage1"]["epochs"] + recipe["stage2"]["epochs"],
+            }
+        )
         prev_map = m["best_map50_95"]
 
     # CSV
     import pandas as pd
+
     df = pd.DataFrame(rows)
     csv_path = cmp_dir / f"{scale}_comparison_summary.csv"
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
@@ -676,10 +688,18 @@ def write_comparison_table(scale: str, scale_results: dict, recipe: dict,
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(f"# Scale-{scale.upper()} Fair Ablation Comparison\n\n")
         f.write(f"> Source: `main_ablation_fair/{scale}/` stage2 `results.csv` (by best epoch mAP50-95)\n")
-        f.write(f"> Reading convention: strict column-name lookup in results.csv (AGENTS.md §8); P/R/mAP50/mAP50-95 are all taken from the same best epoch (max mAP50-95 row), aligned with the paper_figs B table\n")
-        f.write(f"> **Data integrity (AGENTS.md §7): the following are real training results, not fabricated; if M1->M4 is not strictly monotonic, it is recorded as-is.**\n\n")
-        f.write("| No | Model | Loss | Best_Epoch | P | R | mAP50 | mAP50-95 | d(mAP50-95) | Params(M) | GFLOPs | Total_Ep |\n")
-        f.write("|------|------|------|--------|---|---|-------|----------|-------------|-----------|--------|------|\n")
+        f.write(
+            "> Reading convention: strict column-name lookup in results.csv (AGENTS.md §8); P/R/mAP50/mAP50-95 are all taken from the same best epoch (max mAP50-95 row), aligned with the paper_figs B table\n"
+        )
+        f.write(
+            "> **Data integrity (AGENTS.md §7): the following are real training results, not fabricated; if M1->M4 is not strictly monotonic, it is recorded as-is.**\n\n"
+        )
+        f.write(
+            "| No | Model | Loss | Best_Epoch | P | R | mAP50 | mAP50-95 | d(mAP50-95) | Params(M) | GFLOPs | Total_Ep |\n"
+        )
+        f.write(
+            "|------|------|------|--------|---|---|-------|----------|-------------|-----------|--------|------|\n"
+        )
 
         def fmt(x, d=4):
             if isinstance(x, str) or x is None:
@@ -687,18 +707,21 @@ def write_comparison_table(scale: str, scale_results: dict, recipe: dict,
             return f"{x:.{d}f}"
 
         for row in rows:
-            f.write(f"| {row['No']} | {row['Model']} | {row['Loss']} | {row['Best_Epoch']} | "
-                    f"{fmt(row['P'])} | {fmt(row['R'])} | {fmt(row['mAP50'])} | "
-                    f"{fmt(row['mAP50_95'])} | {fmt(row['d_mAP50_95']) if row['d_mAP50_95']!='' else '-'} | "
-                    f"{fmt(row['Params(M)'],2) if row['Params(M)'] else 'N/A'} | "
-                    f"{fmt(row['GFLOPs'],1) if row['GFLOPs'] else 'N/A'} | {row['Total_Ep']} |\n")
+            f.write(
+                f"| {row['No']} | {row['Model']} | {row['Loss']} | {row['Best_Epoch']} | "
+                f"{fmt(row['P'])} | {fmt(row['R'])} | {fmt(row['mAP50'])} | "
+                f"{fmt(row['mAP50_95'])} | {fmt(row['d_mAP50_95']) if row['d_mAP50_95'] != '' else '-'} | "
+                f"{fmt(row['Params(M)'], 2) if row['Params(M)'] else 'N/A'} | "
+                f"{fmt(row['GFLOPs'], 1) if row['GFLOPs'] else 'N/A'} | {row['Total_Ep']} |\n"
+            )
     print(f"  + {_rel(md_path)}")
     return df
 
 
-def write_cross_scale_summary(all_results: dict, recipe: dict, output_root: Path = None):
-    """Cross-scale summary: best-mAP50-95 matrix of each model across n/s/m, to
-    inspect scale-stability of the improvement."""
+def write_cross_scale_summary(all_results: dict, recipe: dict, output_root: Path | None = None):
+    """Cross-scale summary: best-mAP50-95 matrix of each model across n/s/m, to inspect scale-stability of the
+    improvement.
+    """
     if output_root is None:
         output_root = WORK_BASE_ROOT
     cmp_dir = output_root / "comparison"
@@ -725,13 +748,12 @@ def write_cross_scale_summary(all_results: dict, recipe: dict, output_root: Path
 # paper_figs 衔接
 # ============================================================
 
-def generate_paper_figs_config(scale: str, recipe: dict, output_root: Path = None) -> Path:
-    """为指定尺度生成 paper_figs_config YAML，落入 output_root（时间戳文件夹）。
 
-    output_root 决定 dir/out_dir 的相对前缀（runs/outputs/fair_<ts>）。
-    paper_figs.py 的 _resolve_path 会基于 PROJECT_ROOT 解析相对路径；
-    _detect_root 按 len(dir.parts) 自适应剥离层级，故时间戳多一层也能正确解析。
-    YAML 落入时间戳文件夹使其自包含（本地解压后 --replot 可直接用）。
+def generate_paper_figs_config(scale: str, recipe: dict, output_root: Path | None = None) -> Path:
+    """为指定尺度生成 paper_figs_config YAML，落入 output_root（时间戳文件夹）。.
+
+    output_root 决定 dir/out_dir 的相对前缀（runs/outputs/fair_<ts>）。 paper_figs.py 的 _resolve_path 会基于 PROJECT_ROOT 解析相对路径；
+    _detect_root 按 len(dir.parts) 自适应剥离层级，故时间戳多一层也能正确解析。 YAML 落入时间戳文件夹使其自包含（本地解压后 --replot 可直接用）。
     """
     if output_root is None:
         output_root = WORK_BASE_ROOT
@@ -741,14 +763,14 @@ def generate_paper_figs_config(scale: str, recipe: dict, output_root: Path = Non
 
     # 渲染专用配置（color/linestyle/fce_module 不在 MODEL_DISPLAY 中，此处独立维护）
     _render = {
-        "baseline":  {"color": "#0BDBEB", "linestyle": "--",  "fce_module": "-"},
-        "bifpn":     {"color": "#042AFF", "linestyle": "-.",  "fce_module": "F"},
-        "fce":       {"color": "#FF6B00", "linestyle": ":",   "fce_module": "F+C"},
-        "fce_wiou":  {"color": "#E91E63", "linestyle": "-",   "fce_module": "F+C+E"},
+        "baseline": {"color": "#0BDBEB", "linestyle": "--", "fce_module": "-"},
+        "bifpn": {"color": "#042AFF", "linestyle": "-.", "fce_module": "F"},
+        "fce": {"color": "#FF6B00", "linestyle": ":", "fce_module": "F+C"},
+        "fce_wiou": {"color": "#E91E63", "linestyle": "-", "fce_module": "F+C+E"},
     }
     experiments = {}
     for order, key in enumerate(["baseline", "bifpn", "fce", "fce_wiou"], start=1):
-        seq, display, loss = MODEL_DISPLAY[key]
+        _seq, display, loss = MODEL_DISPLAY[key]
         experiments[key] = {
             "dir": f"{out_prefix}/{scale}/{get_model_dir_name(key, scale)}/stage2",
             "display": display,
@@ -771,17 +793,20 @@ def generate_paper_figs_config(scale: str, recipe: dict, output_root: Path = Non
     return cfg_path
 
 
-def generate_figures(scales: list, recipe: dict, output_root: Path = None):
-    """为每个尺度调用 paper_figs.py 出图（A/B/C/D 全套）。"""
+def generate_figures(scales: list, recipe: dict, output_root: Path | None = None):
+    """为每个尺度调用 paper_figs.py 出图（A/B/C/D 全套）。."""
     print("\n" + "=" * 80)
     print("Stage 4: generate figures (paper_figs.py)")
     print("=" * 80)
     import subprocess
+
     for scale in scales:
         cfg_path = generate_paper_figs_config(scale, recipe, output_root=output_root)
         cmd = [
-            sys.executable, "script/paper_figs.py",
-            "--config", str(cfg_path),
+            sys.executable,
+            "script/paper_figs.py",
+            "--config",
+            str(cfg_path),
         ]
         print(f"\n> figures {scale}: {' '.join(cmd)}")
         try:
@@ -796,9 +821,10 @@ def generate_figures(scales: list, recipe: dict, output_root: Path = None):
 # README 自动生成
 # ============================================================
 
-def generate_readme(recipe: dict, all_results: dict, output_root: Path = None):
-    """Generate <output_root>/README.md (recipe summary + real metrics +
-    diff vs the legacy main_ablation_m)."""
+
+def generate_readme(recipe: dict, all_results: dict, output_root: Path | None = None):
+    """Generate <output_root>/README.md (recipe summary + real metrics + diff vs the legacy main_ablation_m).
+    """
     if output_root is None:
         output_root = WORK_BASE_ROOT
     output_root.mkdir(parents=True, exist_ok=True)  # ensure dir exists on full failure
@@ -808,7 +834,9 @@ def generate_readme(recipe: dict, all_results: dict, output_root: Path = None):
     lines = []
     lines.append("# Fair Ablation (main_ablation_fair)\n")
     lines.append("> Auto-generated by `script/run_ablation.py` from `script/ablation_config.yaml`.\n")
-    lines.append("> **Data integrity (AGENTS.md §7)**: the following are real training results, not fabricated; if M1->M4 is not strictly monotonic, it is recorded as-is.\n\n")
+    lines.append(
+        "> **Data integrity (AGENTS.md §7)**: the following are real training results, not fabricated; if M1->M4 is not strictly monotonic, it is recorded as-is.\n\n"
+    )
 
     lines.append("## Recipe\n")
     lines.append(f"- scales: {', '.join(recipe['scales'])}")
@@ -818,23 +846,33 @@ def generate_readme(recipe: dict, all_results: dict, output_root: Path = None):
     s2 = recipe["stage2"]
     freeze = recipe["freeze"]
     if s1.get("epochs", 0) == 0:
-        lines.append(f"- **single-stage**: {s2['epochs']}ep, lr0={s2['lr0']}, cos_lr={s2['cos_lr']}, close_mosaic={s2['close_mosaic']}, no freeze (excludes freeze interference on the new attention module)")
+        lines.append(
+            f"- **single-stage**: {s2['epochs']}ep, lr0={s2['lr0']}, cos_lr={s2['cos_lr']}, close_mosaic={s2['close_mosaic']}, no freeze (excludes freeze interference on the new attention module)"
+        )
     else:
-        lines.append(f"- **all two-stage**: stage1({s1['epochs']}ep, freeze={freeze}, lr0={s1.get('lr0','?')}) + stage2({s2['epochs']}ep, lr0={s2['lr0']}, cos_lr={s2['cos_lr']}) = {recipe.get('total_epochs','?')}ep")
-        lines.append(f"- **baseline also two-stage** (fair alignment: fully symmetric with the FCE structure)")
-    lines.append(f"- unified variables: seed={sh.get('seed')}, deterministic={sh.get('deterministic')}, degrees={sh.get('degrees')}, optimizer={sh.get('optimizer')}, imgsz={sh.get('imgsz')}, batch={sh.get('batch')}, cache={sh.get('cache')}")
+        lines.append(
+            f"- **all two-stage**: stage1({s1['epochs']}ep, freeze={freeze}, lr0={s1.get('lr0', '?')}) + stage2({s2['epochs']}ep, lr0={s2['lr0']}, cos_lr={s2['cos_lr']}) = {recipe.get('total_epochs', '?')}ep"
+        )
+        lines.append("- **baseline also two-stage** (fair alignment: fully symmetric with the FCE structure)")
+    lines.append(
+        f"- unified variables: seed={sh.get('seed')}, deterministic={sh.get('deterministic')}, degrees={sh.get('degrees')}, optimizer={sh.get('optimizer')}, imgsz={sh.get('imgsz')}, batch={sh.get('batch')}, cache={sh.get('cache')}"
+    )
     lines.append(f"- IoU mapping: {recipe.get('iou_override', {})}\n")
 
     lines.append("## Real metrics\n")
     for scale in recipe["scales"]:
-        if scale in all_results and all_results[scale]:
+        if all_results.get(scale):
             md_path = output_root / "comparison" / f"{scale}_comparison_summary.md"
             lines.append(f"### Scale {scale.upper()}")
             lines.append(f"See `{_rel(md_path)}`.\n")
 
     lines.append("## Diff vs legacy main_ablation_m\n")
-    lines.append("- **legacy `main_ablation_m/`**: variables not unified (baseline single-stage / lr0=0.01, M4 with degrees off, inconsistent cache/deterministic, etc.), kept only for historical reference, now archived.")
-    lines.append("- **this `main_ablation_fair/`**: controlled comparison (unified seed/deterministic/augmentation/two-stage); the final data adopted by the paper.\n")
+    lines.append(
+        "- **legacy `main_ablation_m/`**: variables not unified (baseline single-stage / lr0=0.01, M4 with degrees off, inconsistent cache/deterministic, etc.), kept only for historical reference, now archived."
+    )
+    lines.append(
+        "- **this `main_ablation_fair/`**: controlled comparison (unified seed/deterministic/augmentation/two-stage); the final data adopted by the paper.\n"
+    )
 
     lines.append("## Reproduction\n")
     lines.append("```bash")
@@ -852,8 +890,9 @@ def generate_readme(recipe: dict, all_results: dict, output_root: Path = None):
 # CLI
 # ============================================================
 
+
 def parse_scale_arg(raw: str) -> list:
-    """解析 --scale 连写：'nsm' -> ['n','s','m']；'m' -> ['m']。
+    """解析 --scale 连写：'nsm' -> ['n','s','m']；'m' -> ['m']。.
 
     每个字符必须 ∈ {n,s,m,l,x}，不允许重复，不允许空字符串。
     """
@@ -888,17 +927,22 @@ examples:
 
     # --- common args ---
     parser.add_argument("--recipe", type=Path, default=DEFAULT_RECIPE, help="recipe YAML path")
-    parser.add_argument("--scale", type=str, default=None,
-                        help="scales concatenated, e.g. 'm' or 'nsm'; default: recipe scales")
+    parser.add_argument(
+        "--scale", type=str, default=None, help="scales concatenated, e.g. 'm' or 'nsm'; default: recipe scales"
+    )
     parser.add_argument("--models", type=str, nargs="+", default=None, help="override recipe models")
     parser.add_argument("--skip-train", action="store_true", help="skip training, only collect + plot")
-    parser.add_argument("--replot", type=str, default=None, metavar="TIMESTAMP",
-                        help="re-generate figures from an existing run dir "
-                             "(e.g. fair_20260702_153000); reads <run_dir>/<scale>/0X_*/stage2, "
-                             "writes figures/README back to the same dir")
+    parser.add_argument(
+        "--replot",
+        type=str,
+        default=None,
+        metavar="TIMESTAMP",
+        help="re-generate figures from an existing run dir "
+        "(e.g. fair_20260702_153000); reads <run_dir>/<scale>/0X_*/stage2, "
+        "writes figures/README back to the same dir",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print matrix only, no training")
-    parser.add_argument("--force", action="store_true",
-                        help="force retrain, ignore resume check (clean stale residue)")
+    parser.add_argument("--force", action="store_true", help="force retrain, ignore resume check (clean stale residue)")
 
     return parser.parse_args()
 
@@ -966,7 +1010,7 @@ def main():
     print("Stage 3: generate comparison tables")
     print("=" * 80)
     for scale in scales:
-        if scale in all_results and all_results[scale]:
+        if all_results.get(scale):
             write_comparison_table(scale, all_results[scale], recipe, output_root=output_root)
     write_cross_scale_summary(all_results, recipe, output_root=output_root)
 
@@ -981,7 +1025,7 @@ def main():
     print("ALL DONE")
     print("=" * 80)
     print(f"results dir: {output_root}")
-    print(f"\nPack for transfer to local:")
+    print("\nPack for transfer to local:")
     print(f"  zip -r {output_root.name}.zip {_rel(output_root)}")
 
 

@@ -1,4 +1,4 @@
-"""WIoU v3 聚焦机制单元测试（systematic-debugging Phase 4.1）
+"""WIoU v3 聚焦机制单元测试（systematic-debugging Phase 4.1）.
 
 验证 _wiouv3_focusing 的聚焦曲线是否符合 Wise-IoU 论文（arXiv:2301.10051）
 与官方实现（github.com/Instinct323/Wise-IoU）的设计意图。
@@ -25,17 +25,17 @@ from ultralytics.utils.loss import BboxLoss  # noqa: E402
 
 
 def make_focusing(iou_type="WIoU"):
-    """构造一个 BboxLoss 实例用于测试 _wiouv3_focusing。"""
+    """构造一个 BboxLoss 实例用于测试 _wiouv3_focusing。."""
     return BboxLoss(reg_max=16, iou_type=iou_type)
 
 
 def test_focusing_curve_shape():
-    """聚焦曲线形状测试（核心）。
+    """聚焦曲线形状测试（核心）。.
 
     论文/官方设计的 v3 动态非单调聚焦机制应满足：
-      1. 易样本（loss << mean）：r 较小（适度降权，但不归零，r > 0.2）
-      2. 中等样本（loss ≈ mean）：r 接近峰值（~1.0-1.3）
-      3. 难样本（loss >> mean）：r 缓慢下降但不归零（r > 0.5）
+    1. 易样本（loss << mean）：r 较小（适度降权，但不归零，r > 0.2）
+    2. 中等样本（loss ≈ mean）：r 接近峰值（~1.0-1.3）
+    3. 难样本（loss >> mean）：r 缓慢下降但不归零（r > 0.5）
 
     bug 行为（修复前）：难样本 r 断崖归零（~0.0），违反设计意图。
     """
@@ -75,8 +75,7 @@ def test_focusing_curve_shape():
     hard_r_min = r[hard_mask].min().item()
     print(f"\n难样本(loss>=0.5) 最小 r = {hard_r_min:.4f}")
     assert hard_r_min > 0.3, (
-        f"FAIL: 难样本聚焦系数归零（r={hard_r_min:.4f} < 0.3），"
-        f"梯度消失——这是 WIoU v3 聚焦公式 bug 的症状。"
+        f"FAIL: 难样本聚焦系数归零（r={hard_r_min:.4f} < 0.3），梯度消失——这是 WIoU v3 聚焦公式 bug 的症状。"
     )
 
     # 近 mean 样本不应被过度放大（官方峰值约 1.2-1.3，bug 版会到 2.5-3.0）
@@ -84,8 +83,7 @@ def test_focusing_curve_shape():
     near_mean_r_max = r[near_mean_mask].max().item()
     print(f"近 mean 样本(0.25-0.35) 最大 r = {near_mean_r_max:.4f}")
     assert near_mean_r_max < 2.0, (
-        f"FAIL: 近 mean 样本聚焦系数过大（r={near_mean_r_max:.4f} > 2.0），"
-        f"梯度过度集中——β.pow(delta) bug 的症状。"
+        f"FAIL: 近 mean 样本聚焦系数过大（r={near_mean_r_max:.4f} > 2.0），梯度过度集中——β.pow(delta) bug 的症状。"
     )
 
     # r 不应有 NaN/Inf
@@ -95,7 +93,7 @@ def test_focusing_curve_shape():
 
 
 def test_focusing_monotonicity_at_mean():
-    """β=1（loss=mean）时 r 应接近论文峰值，且难样本不应断崖下跌。"""
+    """Β=1（loss=mean）时 r 应接近论文峰值，且难样本不应断崖下跌。."""
     focusing = make_focusing()
     focusing._wiou_loss_mean = 0.3
 
@@ -115,15 +113,13 @@ def test_focusing_monotonicity_at_mean():
     r_at_easy = r[0].item()
     print(f"r at loss=0.1: {r_at_easy:.4f}, r at loss=0.9: {r_at_hard:.4f}")
 
-    assert r_at_hard > 0.2, (
-        f"FAIL: 极难样本(loss=0.9) r={r_at_hard:.4f} 过低，难样本梯度不足"
-    )
+    assert r_at_hard > 0.2, f"FAIL: 极难样本(loss=0.9) r={r_at_hard:.4f} 过低，难样本梯度不足"
 
     print("PASS: 聚焦曲线单调性合理")
 
 
 def losss_to_idx(losses, target):
-    """找到 losses 中最接近 target 的索引。"""
+    """找到 losses 中最接近 target 的索引。."""
     return (losses - target).abs().argmin().item()
 
 
